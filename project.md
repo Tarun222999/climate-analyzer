@@ -134,4 +134,4 @@ PDF export and Mann-Kendall testing are optional alternatives or extensions, not
 
 ## Current status
 
-Planning complete for the core scope, climate methodology, endpoints, and hosting. Implementation has not started. A standalone HTML layout preview exists. Next, implement and verify the backend weather/cache/analysis flow, then connect the React frontend and deploy.
+Backend implementation and verification completed on October 14, 2026. Weather and baseline caching, heatwave calculations, annual metrics, rolling averages, insights, analysis caching, API endpoints, request controls, CORS, safe shutdown, and storage maintenance are implemented. The offline regression suite and a temporary running-server check passed. See README.md and backend/HANDOFF.md for setup and limitations. The React frontend remains a starter; next connect the user flow and results views, then deploy and verify in the browser.

@@ -1,8 +1,8 @@
-fastapi
-uvicorn
-numpy
-pymongo
-dnspython
-httpx
-pydantic
-pydantic-settings
+fastapi==0.143.0
+uvicorn==0.54.0
+numpy==2.5.4
+pymongo==4.18.3
+dnspython==2.9.0
+httpx==0.28.1
+pydantic==2.14.1
+pydantic-settings==2.15.0
