@@ -1,4 +1,5 @@
 
+from re import I
 import httpx
 import asyncio
 
@@ -59,40 +60,6 @@ def parse_weather_days(
     return days,invalid_dates
 
 
-
-
-
-_weather_slots = asyncio.Semaphore(2)
-async def fetch_weather_payload(
-    client:httpx.AsyncClient,
-    location:Location,
-    year:int
-) -> dict:
-    async with _weather_slots:      
-        response = await client.get(
-            "https://archive-api.open-meteo.com/v1/archive",
-            params = {
-                "latitude":location.latitude,
-                "longitude":location.longitude,
-                "start_date": f"{year}-01-01",
-                "end_date": f"{year}-12-31",
-                "daily": "temperature_2m_max",
-                "models": "era5_land",
-                "timezone": location.timezone,
-                "temperature_unit": "celsius",
-            },
-            timeout=30.0
-        )
-        response.raise_for_status()
-
-    payload = response.json()
-
-    if not isinstance(payload,dict):
-        raise ValueError("Expected a weather response object")
-    return payload
-
-
-
 def retry_after_seconds(
     value:str | None,
     now:datetime
@@ -109,3 +76,68 @@ def retry_after_seconds(
         return max(0.0, (retry_at - now).total_seconds())
     except (ValueError, TypeError, OverflowError):
         return None
+
+
+
+
+_weather_slots = asyncio.Semaphore(2)
+
+
+async def fetch_weather_payload(
+    client: httpx.AsyncClient,
+    location: Location,
+    year: int,
+) -> dict:
+    params = {
+        "latitude": location.latitude,
+        "longitude": location.longitude,
+        "start_date": f"{year}-01-01",
+        "end_date": f"{year}-12-31",
+        "daily": "temperature_2m_max",
+        "models": "era5_land",
+        "timezone": location.timezone,
+        "temperature_unit": "celsius",
+    }
+
+    for attempt in range(3):
+        try:
+            async with _weather_slots:
+                response = await client.get(
+                    "https://archive-api.open-meteo.com/v1/archive",
+                    params=params,
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+
+        except httpx.HTTPStatusError as exc:
+            retryable = exc.response.status_code in {
+                429, 500, 502, 503, 504
+            }
+            if not retryable or attempt == 2:
+                raise
+
+            delay = retry_after_seconds(
+                exc.response.headers.get("Retry-After"),
+                datetime.now(timezone.utc),
+            )
+            if delay is None:
+                delay = float(2 ** attempt)
+
+            # Stop rather than retry earlier than the server requested.
+            if delay > 10:
+                raise
+
+        except httpx.TransportError:
+            if attempt == 2:
+                raise
+            delay = float(2 ** attempt)
+
+        else:
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise ValueError("Expected a weather response object")
+            return payload
+
+        await asyncio.sleep(delay)
+
+    raise RuntimeError("Retry loop ended unexpectedly")
