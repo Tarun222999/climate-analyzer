@@ -163,3 +163,116 @@ class HeatwaveEvent(BaseModel):
             raise ValueError("Event duration must match its observed dates")
         return self
         
+
+class SelectedHeatwaveEvent(HeatwaveEvent):
+    selected_start_date: date
+    selected_end_date: date
+    days_in_selection: int = Field(strict=True, ge=1)
+    peak_temperature_in_selection_c: float = Field(
+        strict=True, ge=-100, le=70
+    )
+    full_duration_days: int | None = Field(strict=True, ge=3)
+    starts_before_selection: bool | None
+    ends_after_selection: bool | None
+
+    @model_validator(mode="after")
+    def validate_selection(self) -> Self:
+        if not (
+            self.observed_start_date
+            <= self.selected_start_date
+            <= self.selected_end_date
+            <= self.observed_end_date
+        ):
+            raise ValueError("Selected event dates must lie within observed dates")
+
+        selected_days = (
+            self.selected_end_date - self.selected_start_date
+        ).days + 1
+        if self.days_in_selection != selected_days:
+            raise ValueError("Selected day count must match selected dates")
+
+        expected_full_duration = (
+            self.observed_duration_days
+            if self.start_boundary_resolved and self.end_boundary_resolved
+            else None
+        )
+        if self.full_duration_days != expected_full_duration:
+            raise ValueError("Full duration requires resolved event boundaries")
+
+        if self.peak_temperature_in_selection_c > self.peak_temperature_c:
+            raise ValueError("Selected peak cannot exceed observed event peak")
+
+        return self
+
+
+class HeatwaveSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    events_starting_in_selection: int | None = Field(strict=True, ge=0)
+    heatwave_days: int | None = Field(strict=True, ge=0)
+    longest_duration_in_selection_days: int | None = Field(
+        strict=True, ge=0
+    )
+
+    peak_temperature_c: float | None = Field(
+        strict=True, ge=-100, le=70
+    )
+    peak_above_threshold_c: float | None = Field(strict=True, gt=0)
+
+    expected_days: int = Field(strict=True, ge=1)
+    valid_days: int = Field(strict=True, ge=0)
+    metrics_complete: bool = Field(strict=True)
+
+    @model_validator(mode="after")
+    def validate_summary(self) -> Self:
+        if self.valid_days > self.expected_days:
+            raise ValueError("Valid days cannot exceed expected days")
+
+        if (
+            self.peak_temperature_c is None
+        ) != (
+            self.peak_above_threshold_c is None
+        ):
+            raise ValueError("Peak temperature and threshold difference must agree")
+
+        if self.metrics_complete:
+            if self.valid_days != self.expected_days:
+                raise ValueError("Complete metrics require every daily reading")
+
+            counts = (
+                self.events_starting_in_selection,
+                self.heatwave_days,
+                self.longest_duration_in_selection_days,
+            )
+            if any(value is None for value in counts):
+                raise ValueError("Complete metrics require available counts")
+
+        return self
+
+
+
+class AnnualHeatwaveMetrics(HeatwaveSummary):
+    year: int = Field(strict=True, ge=1950, le=2025)
+
+    @model_validator(mode="after")
+    def validate_year_days(self) -> Self:
+        expected = (
+            date(self.year + 1, 1, 1) - date(self.year, 1, 1)
+        ).days
+
+        if self.expected_days != expected:
+            raise ValueError("Annual metrics must cover the entire year")
+
+        return self
+
+class RollingHeatwaveMetrics(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    year: int = Field(strict=True, ge=1950, le=2025)
+    window_years: Literal[5] = 5
+
+    events_starting_average: float | None = Field(strict=True, ge=0)
+    heatwave_days_average: float | None = Field(strict=True, ge=0)
+    longest_duration_average_days: float | None = Field(strict=True, ge=0)
+
+    

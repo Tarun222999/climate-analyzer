@@ -267,3 +267,30 @@ async def _load_or_fetch_weather_window(
      return record
 
 
+
+
+async def get_weather_dates(
+    collection,
+    client: httpx.AsyncClient,
+    location: Location,
+    start_date: date,
+    end_date: date,
+) -> list[DailyTemperature]:
+    if end_date < start_date:
+        raise ValueError("End date must not precede start date")
+
+    days = []
+    cursor = start_date
+
+    while cursor <= end_date:
+        stop = min(end_date, date(cursor.year, 12, 31))
+        record = await get_weather_window(
+            collection, client, location, cursor, stop
+        )
+        days.extend(
+            day for day in record.days
+            if cursor <= day.date <= stop
+        )
+        cursor = stop + timedelta(days=1)
+
+    return days

@@ -1,10 +1,9 @@
 
 
-
-
+from datetime import date, timedelta
 from math import isfinite
-from backend.models import DailyTemperature, HeatwaveEvent
 
+from models import DailyTemperature, HeatwaveEvent, SelectedHeatwaveEvent
 
 def detect_heatwaves(
     days:list[DailyTemperature],
@@ -72,3 +71,65 @@ def detect_heatwaves(
     finish_run(False)
     return events;
 
+
+
+def select_heatwaves(
+    days: list[DailyTemperature],
+    threshold_c: float,
+    selection_start: date,
+    selection_end: date,
+) -> list[SelectedHeatwaveEvent]:
+    if selection_end < selection_start:
+        raise ValueError("Selection end must be at least selection start")
+
+    events = detect_heatwaves(days, threshold_c)
+    temperatures = {
+        day.date: day.max_temperature_c
+        for day in days
+    }
+    selected_events = []
+
+    for event in events:
+        # Keep only events that overlap the selected dates.
+        start = max(event.observed_start_date, selection_start)
+        end = min(event.observed_end_date, selection_end)
+
+        if start > end:
+            continue
+
+        count = (end - start).days + 1
+        selected_peak = max(
+            temperatures[start + timedelta(days=i)]
+            for i in range(count)
+        )
+
+        starts_before = (
+            True
+            if event.observed_start_date < selection_start
+            else False if event.start_boundary_resolved else None
+        )
+        ends_after = (
+            True
+            if event.observed_end_date > selection_end
+            else False if event.end_boundary_resolved else None
+        )
+
+        selected_events.append(
+            SelectedHeatwaveEvent(
+                **event.model_dump(),
+                selected_start_date=start,
+                selected_end_date=end,
+                days_in_selection=count,
+                peak_temperature_in_selection_c=selected_peak,
+                full_duration_days=(
+                    event.observed_duration_days
+                    if event.start_boundary_resolved
+                    and event.end_boundary_resolved
+                    else None
+                ),
+                starts_before_selection=starts_before,
+                ends_after_selection=ends_after,
+            )
+        )
+
+    return selected_events
