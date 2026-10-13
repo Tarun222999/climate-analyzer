@@ -1,15 +1,20 @@
 """Run a temporary local server and verify real caches without deleting data."""
-import asyncio
+from pathlib import Path
 import sys
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import asyncio
 
 import httpx
 import uvicorn
 
-from analysis_cache import load_analysis
-from config import Settings
-from database import create_mongo_client
-from main import app
-from models import AnalysisRequest, AnalysisResult, Location
+from app.storage.analysis_cache import load_analysis
+from app.core.config import Settings
+from app.storage.database import create_mongo_client
+from app.main import app
+from app.models import AnalysisRequest, AnalysisResult, Location
 
 
 async def main():

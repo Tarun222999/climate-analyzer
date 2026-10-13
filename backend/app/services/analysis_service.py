@@ -4,9 +4,9 @@ from math import isfinite
 import httpx
 import asyncio
 
-from baseline_service import get_baseline_threshold
-from heatwaves import select_heatwaves
-from models import (
+from app.services.baseline_service import get_baseline_threshold
+from app.calculations.heatwaves import select_heatwaves
+from app.models import (
     AnalysisRequest,
     AnalysisResult,
     AnnualHeatwaveMetrics,
@@ -15,9 +15,9 @@ from models import (
     RollingHeatwaveMetrics,
     SelectedHeatwaveEvent,
 )
-from weather_service import get_weather_dates
-from cache_io import run_cache_operation
-from analysis_cache import load_analysis, save_analysis
+from app.services.weather_service import get_weather_dates
+from app.storage.cache_io import run_cache_operation
+from app.storage.analysis_cache import load_analysis, save_analysis
 
 CONTEXT_PADDING_DAYS = 2
 CONTEXT_CHUNK_DAYS = 30

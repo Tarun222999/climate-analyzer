@@ -1,142 +1,30 @@
+"""HTTP routes; calculations and persistence live in their services."""
 import asyncio
-from contextlib import asynccontextmanager
+from math import ceil
 from typing import Annotated
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import ValidationError
-
-from config import Settings
-from database import (
-    create_mongo_client,
-    ensure_analysis_index,
-    ensure_baseline_index,
-    ensure_weather_index,
-)
-from models import LocationMatch
-
-
-from math import ceil
-
-from fastapi import Request
 from pymongo.errors import PyMongoError
 
-from analysis_service import get_analysis
-from models import AnalysisRequest, AnalysisResult
-from usage import UsageLimitError
-from geocoding import fetch_locations
-from cache_io import drain_cache_operations
-from weather_service import start_weather_fetches, shutdown_weather_fetches
-from maintenance import monitor_storage
-
-from fastapi import Depends
-from request_limits import RequestRateLimiter,RequestConcurrencyLimiter
-
-from fastapi.middleware.cors import CORSMiddleware
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    settings = Settings()
-    mongo = create_mongo_client(settings)
-
-    try:
-        await asyncio.to_thread(mongo.admin.command, "ping")
-
-        db = mongo[settings.mongodb_db_name]
-        weather = db["weather_years"]
-        baselines = db["baseline_thresholds"]
-        analyses = db["analyses"]
-
-        await asyncio.to_thread(ensure_weather_index, weather)
-        await asyncio.to_thread(ensure_baseline_index, baselines)
-        await asyncio.to_thread(ensure_analysis_index, analyses)
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            start_weather_fetches(mongo)
-            app.state.weather_collection = weather
-            app.state.baseline_collection = baselines
-            app.state.analysis_collection = analyses
-            app.state.http_client = client
-            app.state.analysis_limiter = RequestRateLimiter(6, 60.0)
-            app.state.location_limiter = RequestRateLimiter(30, 60.0)
-            app.state.analysis_concurrency = RequestConcurrencyLimiter(2)
-            app.state.location_slots = asyncio.Semaphore(2)
-
-            storage_stop = asyncio.Event()
-            storage_task = asyncio.create_task(
-                monitor_storage(db, settings.storage_budget_bytes, storage_stop)
-            )
-            try:
-                yield
-            finally:
-                storage_stop.set()
-                await storage_task
-                await shutdown_weather_fetches(mongo)
-                await drain_cache_operations()
-    finally:
-        await asyncio.to_thread(mongo.close)
-
-
-app = FastAPI(
-    title="Climate Hazard Trend Analyzer",
-    lifespan=lifespan,
+from app.api.dependencies import (
+    limit_analysis_concurrency, limit_analysis_requests, limit_location_requests,
 )
+from app.core.usage import UsageLimitError
+from app.models import AnalysisRequest, AnalysisResult, LocationMatch
+from app.services.analysis_service import get_analysis
+from app.services.geocoding import fetch_locations
+
+router = APIRouter()
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=Settings().cors_origins,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
-)
-
-
-def check_request_limit(
-    request: Request,
-    limiter: RequestRateLimiter,
-) -> None:
-    client_key = request.client.host if request.client else "unknown"
-    retry_after = limiter.reserve(client_key)
-
-    if retry_after > 0:
-        raise HTTPException(
-            status_code=429,
-            detail="Too many requests. Try again later.",
-            headers={"Retry-After": str(max(1, ceil(retry_after)))},
-        )
-
-
-async def limit_analysis_requests(request: Request) -> None:
-    check_request_limit(request, request.app.state.analysis_limiter)
-
-
-async def limit_location_requests(request: Request) -> None:
-    check_request_limit(request, request.app.state.location_limiter)
-
-
-async def limit_analysis_concurrency(request: Request):
-    limiter = request.app.state.analysis_concurrency
-
-    if not limiter.try_acquire():
-        raise HTTPException(
-            status_code=503,
-            detail="Analysis capacity is busy. Try again shortly.",
-            headers={"Retry-After": "1"},
-        )
-
-    try:
-        yield
-    finally:
-        limiter.release()
-
-
-@app.get("/api/health")
+@router.get("/api/health")
 def health():
     return {"status":"ok"}
 
 
-@app.get(
+@router.get(
     "/api/locations",
     response_model=list[LocationMatch],
     dependencies=[Depends(limit_location_requests)],
@@ -212,7 +100,7 @@ async def search_locations(
 
 
 
-@app.post(
+@router.post(
     "/api/analysis",
     response_model=AnalysisResult,
     dependencies=[

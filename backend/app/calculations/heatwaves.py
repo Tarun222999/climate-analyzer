@@ -3,7 +3,7 @@
 from datetime import date, timedelta
 from math import isfinite
 
-from models import DailyTemperature, HeatwaveEvent, SelectedHeatwaveEvent
+from app.models import DailyTemperature, HeatwaveEvent, SelectedHeatwaveEvent
 
 def detect_heatwaves(
     days:list[DailyTemperature],

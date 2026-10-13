@@ -1,14 +1,20 @@
 """Operator CLI. Invalidation previews by default; stop the API before --apply."""
+from pathlib import Path
+import sys
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import argparse
 import json
 
 from pydantic import ValidationError
 from pymongo.errors import PyMongoError
 
-from config import Settings
-from database import create_mongo_client
-from maintenance import invalidate_cache, storage_report
-from models import Location
+from app.core.config import Settings
+from app.storage.database import create_mongo_client
+from app.storage.maintenance import invalidation_plan, invalidate_cache, storage_report
+from app.models import Location
 
 
 def main():
@@ -29,7 +35,6 @@ def main():
         if args.command == "invalidate":
             location = Location(name="Cache maintenance", latitude=args.latitude,
                                 longitude=args.longitude, timezone=args.timezone)
-            from maintenance import invalidation_plan
             invalidation_plan(location, args.kind, args.year)
         settings = Settings()
         with create_mongo_client(settings) as mongo:

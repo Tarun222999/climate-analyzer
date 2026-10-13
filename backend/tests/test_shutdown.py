@@ -6,9 +6,9 @@ from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from cache_io import drain_cache_operations, run_cache_operation
-from models import Location
-import weather_service as service
+from app.storage.cache_io import drain_cache_operations, run_cache_operation
+from app.models import Location
+import app.services.weather_service as service
 
 
 class ShutdownTests(unittest.IsolatedAsyncioTestCase):

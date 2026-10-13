@@ -1,4 +1,4 @@
-from models import AnalysisRequest, AnalysisResult, BaselineThreshold
+from app.models import AnalysisRequest, AnalysisResult, BaselineThreshold
 
 
 BASELINE_KEY_FIELDS = (

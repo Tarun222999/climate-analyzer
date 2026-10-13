@@ -3,7 +3,7 @@ from datetime import date
 
 import numpy as np
 
-from models import WeatherYear
+from app.models import WeatherYear
 
 
 BASELINE_START_YEAR = 1991

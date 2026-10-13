@@ -1,7 +1,7 @@
 
 from pymongo import ASCENDING, MongoClient
 
-from config import Settings
+from app.core.config import Settings
 
 
 
@@ -68,7 +68,7 @@ def ensure_baseline_index(collection) -> str:
         unique=True,
     )
 
-from analysis_cache import ANALYSIS_KEY_FIELDS
+from app.storage.analysis_cache import ANALYSIS_KEY_FIELDS
 
 
 ANALYSIS_INDEX_NAME = "unique_analysis"

@@ -5,10 +5,10 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 
-from geocoding import fetch_locations
-from main import app
-from request_limits import RequestRateLimiter
-from usage import UsageLimitError
+from app.services.geocoding import fetch_locations
+from app.main import app
+from app.core.request_limits import RequestRateLimiter
+from app.core.usage import UsageLimitError
 
 
 class GeocodingTests(unittest.IsolatedAsyncioTestCase):
@@ -28,7 +28,7 @@ class GeocodingTests(unittest.IsolatedAsyncioTestCase):
         async with httpx.AsyncClient(transport=httpx.MockTransport(provider)) as shared:
             app.state.http_client = shared
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as api:
-                with patch("geocoding.wait_for_usage", new_callable=AsyncMock) as budget:
+                with patch("app.services.geocoding.wait_for_usage", new_callable=AsyncMock) as budget:
                     response = await api.get("/api/locations", params={"query": " Delhi "})
                     self.assertEqual(response.status_code, 200)
                     self.assertEqual(response.json()[0]["country"], "India")
@@ -53,7 +53,7 @@ class GeocodingTests(unittest.IsolatedAsyncioTestCase):
                                       headers={"Retry-After": retry_after} if retry_after else {}, json={})
 
             async with httpx.AsyncClient(transport=httpx.MockTransport(provider)) as client:
-                with patch("geocoding.wait_for_usage", new_callable=AsyncMock) as budget, patch("geocoding.asyncio.sleep", new_callable=AsyncMock):
+                with patch("app.services.geocoding.wait_for_usage", new_callable=AsyncMock) as budget, patch("app.services.geocoding.asyncio.sleep", new_callable=AsyncMock):
                     if statuses[-1] == 200:
                         self.assertEqual((await fetch_locations(client, asyncio.Semaphore(2), "Delhi")).status_code, 200)
                     else:
@@ -74,7 +74,7 @@ class GeocodingTests(unittest.IsolatedAsyncioTestCase):
             return httpx.Response(200, json={})
 
         async with httpx.AsyncClient(transport=httpx.MockTransport(provider)) as client:
-            with patch("geocoding.wait_for_usage", new_callable=AsyncMock):
+            with patch("app.services.geocoding.wait_for_usage", new_callable=AsyncMock):
                 slots = asyncio.Semaphore(2)
                 await asyncio.gather(*(fetch_locations(client, slots, "Delhi") for _ in range(5)))
         self.assertEqual(peak, 2)

@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, patch
 import httpx
 from pymongo.errors import PyMongoError
 
-from main import app
-from models import AnalysisResult
-from request_limits import RequestConcurrencyLimiter, RequestRateLimiter
-from usage import UsageLimitError
-from weather_service import shutdown_weather_fetches, start_weather_fetches
+from app.main import app
+from app.models import AnalysisResult
+from app.core.request_limits import RequestConcurrencyLimiter, RequestRateLimiter
+from app.core.usage import UsageLimitError
+from app.services.weather_service import shutdown_weather_fetches, start_weather_fetches
 
 
 PAYLOAD = {
@@ -49,7 +49,7 @@ class AnalysisApiTests(unittest.IsolatedAsyncioTestCase):
         self.provider = httpx.AsyncClient(transport=httpx.MockTransport(weather))
         app.state.http_client = self.provider
         self.api = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
-        self.budget_patch = patch("weather.wait_for_usage", new_callable=AsyncMock)
+        self.budget_patch = patch("app.services.weather.wait_for_usage", new_callable=AsyncMock)
         self.budget_patch.start()
 
     async def asyncTearDown(self):
@@ -69,7 +69,7 @@ class AnalysisApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.summary.valid_days, 366)
         self.assertEqual(len(self.calls), 31)  # 30 baseline years plus Jan 2021 context
         self.assertEqual(self.db["analyses"].count_documents({}), 1)
-        with patch("analysis_service.build_analysis", new_callable=AsyncMock) as build:
+        with patch("app.services.analysis_service.build_analysis", new_callable=AsyncMock) as build:
             renamed = {**PAYLOAD, "location": {**PAYLOAD["location"], "name": "Renamed"}}
             warm = await self.api.post("/api/analysis", json=renamed)
             self.assertEqual(warm.status_code, 200)
@@ -97,14 +97,14 @@ class AnalysisApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_failures_validation_and_cors(self):
         for error, status in ((TimeoutError(), 504), (UsageLimitError(12.2), 503),
                               (PyMongoError("test"), 503), (ValueError("test"), 502)):
-            with patch("main.get_analysis", new_callable=AsyncMock, side_effect=error):
+            with patch("app.api.routes.get_analysis", new_callable=AsyncMock, side_effect=error):
                 response = await self.api.post("/api/analysis", json=PAYLOAD)
             self.assertEqual(response.status_code, status)
             self.assertEqual(app.state.analysis_concurrency.active, 0)
             if isinstance(error, UsageLimitError):
                 self.assertEqual(response.headers["Retry-After"], "13")
         invalid = {**PAYLOAD, "end_year": 2019}
-        with patch("main.get_analysis", new_callable=AsyncMock) as build:
+        with patch("app.api.routes.get_analysis", new_callable=AsyncMock) as build:
             self.assertEqual((await self.api.post("/api/analysis", json=invalid)).status_code, 422)
             build.assert_not_awaited()
         for origin, status in (("http://localhost:5173", 200), ("https://unlisted.example", 400)):
@@ -123,7 +123,7 @@ class AnalysisApiTests(unittest.IsolatedAsyncioTestCase):
             await release.wait()
             raise TimeoutError()
 
-        with patch("main.get_analysis", side_effect=stalled):
+        with patch("app.api.routes.get_analysis", side_effect=stalled):
             tasks = [asyncio.create_task(self.api.post("/api/analysis", json=PAYLOAD)) for _ in range(2)]
             try:
                 await asyncio.wait_for(entered.wait(), 2)
@@ -137,7 +137,7 @@ class AnalysisApiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(app.state.analysis_concurrency.active, 0)
 
     async def test_incoming_rate_limit_blocks_before_analysis_work(self):
-        with patch("main.get_analysis", new_callable=AsyncMock, side_effect=TimeoutError()) as build:
+        with patch("app.api.routes.get_analysis", new_callable=AsyncMock, side_effect=TimeoutError()) as build:
             for _ in range(6):
                 self.assertEqual((await self.api.post("/api/analysis", json=PAYLOAD)).status_code, 504)
             response = await self.api.post("/api/analysis", json=PAYLOAD)

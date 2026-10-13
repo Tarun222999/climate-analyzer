@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 
 import httpx
 
-from usage import wait_for_usage
-from weather import retry_after_seconds
+from app.core.usage import wait_for_usage
+from app.services.weather import retry_after_seconds
 
 
 async def fetch_locations(

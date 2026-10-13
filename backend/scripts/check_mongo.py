@@ -1,12 +1,12 @@
 from pathlib import Path
+import sys
 
-from pydantic import SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from pymongo import MongoClient
 
-from pymongo import MongoClient
-
-from config import Settings
+from app.core.config import Settings
 
 
 if __name__ == "__main__":

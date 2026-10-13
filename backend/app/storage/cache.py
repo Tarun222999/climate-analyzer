@@ -1,5 +1,5 @@
 
-from models import Location, WeatherYear,BaselineThreshold
+from app.models import Location, WeatherYear,BaselineThreshold
 
 
 def weather_key(location:Location,year:int)->dict:

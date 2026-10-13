@@ -3,8 +3,8 @@ import asyncio
 import unittest
 from unittest.mock import MagicMock
 
-from maintenance import invalidation_plan, invalidate_cache, monitor_storage, storage_report
-from models import Location
+from app.storage.maintenance import invalidation_plan, invalidate_cache, monitor_storage, storage_report
+from app.models import Location
 
 
 class MaintenanceTests(unittest.TestCase):

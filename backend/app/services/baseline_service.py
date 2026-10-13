@@ -3,15 +3,15 @@ import httpx
 
 from datetime import datetime, timezone
 
-from baseline import (
+from app.calculations.baseline import (
     BASELINE_END_YEAR,
     BASELINE_START_YEAR,
     calculate_baseline_threshold,
 )
-from cache import load_baseline_threshold, save_baseline_threshold
-from models import BaselineThreshold, Location
-from weather_service import get_weather_year
-from cache_io import run_cache_operation
+from app.storage.cache import load_baseline_threshold, save_baseline_threshold
+from app.models import BaselineThreshold, Location
+from app.services.weather_service import get_weather_year
+from app.storage.cache_io import run_cache_operation
 
 
 async def get_baseline_threshold(

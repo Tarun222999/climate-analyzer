@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     storage_budget_bytes: int = Field(default=500_000_000, gt=0)
 
     model_config = SettingsConfigDict(
-        env_file=Path(__file__).with_name(".env"),
+        env_file=Path(__file__).resolve().parents[2] / ".env",
         extra="ignore",
     )
 

@@ -4,14 +4,14 @@ from datetime import date, datetime, timedelta, timezone
 
 from pydantic import ValidationError
 
-from analysis_service import (
+from app.services.analysis_service import (
     analyze_heatwave_selection, calculate_annual_metrics,
     calculate_rolling_averages, generate_heatwave_insights,
 )
-from baseline import calculate_baseline_threshold
-from heatwaves import detect_heatwaves, select_heatwaves
-from models import AnalysisRequest, AnnualHeatwaveMetrics, DailyTemperature, Location, WeatherYear
-from weather import parse_weather_window
+from app.calculations.baseline import calculate_baseline_threshold
+from app.calculations.heatwaves import detect_heatwaves, select_heatwaves
+from app.models import AnalysisRequest, AnnualHeatwaveMetrics, DailyTemperature, Location, WeatherYear
+from app.services.weather import parse_weather_window
 
 
 LOCATION = Location(name="Test", latitude=28.65, longitude=77.23, timezone="Asia/Kolkata")

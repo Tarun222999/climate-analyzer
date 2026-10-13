@@ -32,7 +32,7 @@ Other configuration:
 Run the backend from the repository root:
 
 ```powershell
-.\backend\.venv\Scripts\python.exe -m uvicorn main:app --app-dir backend --host 127.0.0.1 --port 8000 --workers 1
+.\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --workers 1
 ```
 
 Use **one worker and one backend instance**: request limits, outgoing budgets,
@@ -126,10 +126,32 @@ threshold mixes seasons and can miss changes relative to seasonal expectations.
 
 ## Architecture, limits, and caching
 
-`main.py` owns shared HTTP and MongoDB clients during the app lifespan.
-`weather.py` validates provider windows and implements weather retries;
-`weather_service.py` fills only unfetched dates and shares in-flight work per
-location/year. `baseline_service.py` builds/reuses the threshold.
+The backend is a Python package with one canonical import path, such as
+`from app.models import AnalysisRequest`:
+
+```text
+backend/
+  app/
+    main.py                 # App creation, shared clients, lifespan, CORS
+    models.py               # Validated requests, responses, stored records
+    api/                    # HTTP routes and admission dependencies
+    core/                   # Settings, incoming limits, outgoing budget
+    services/               # Weather/geocoding requests and analysis coordination
+    calculations/           # Baseline percentile and heatwave detection
+    storage/                # MongoDB access, caches, maintenance, tracked I/O
+  scripts/                  # Operator commands and live verification
+  tests/                    # Offline regression tests
+  .env                      # Local secrets, ignored by Git
+  .env.example
+  requirements.txt
+```
+
+Package folders contain `__init__.py`. `app/main.py` registers the router from
+`app/api/routes.py`; request admission checks live in `app/api/dependencies.py`.
+Settings always resolve `.env` at the backend root, independent of the working
+directory. `app/services/weather.py` validates windows and implements weather
+retries; `weather_service.py` fills only unfetched dates and shares in-flight
+work per location/year. `baseline_service.py` builds/reuses the threshold.
 `analysis_service.py` calculates results and checks the analysis cache first.
 
 Collections have unique indexes:
@@ -180,7 +202,7 @@ The API samples database storage every five minutes and logs a warning at 80%
 of the configured budget. Read a report manually:
 
 ```powershell
-.\backend\.venv\Scripts\python.exe backend/manage_cache.py storage
+.\backend\.venv\Scripts\python.exe backend/scripts/manage_cache.py storage
 ```
 
 The report sums logical document bytes and index bytes for the **configured
@@ -195,7 +217,7 @@ eviction or deletion of valuable historical weather.
 Preview invalidation without changing data:
 
 ```powershell
-.\backend\.venv\Scripts\python.exe backend/manage_cache.py invalidate --kind weather --year 2020 --latitude 28.65195 --longitude 77.23149 --timezone Asia/Kolkata
+.\backend\.venv\Scripts\python.exe backend/scripts/manage_cache.py invalidate --kind weather --year 2020 --latitude 28.65195 --longitude 77.23149 --timezone Asia/Kolkata
 ```
 
 **Stop the API first** if applying maintenance, then run the same command with
@@ -224,7 +246,7 @@ safe shutdown, and maintenance previews.
 Optional real-cache/server verification:
 
 ```powershell
-.\backend\.venv\Scripts\python.exe backend/verify_live.py
+.\backend\.venv\Scripts\python.exe backend/scripts/verify_live.py
 ```
 
 This requires the previously populated Delhi baseline/weather cache. It starts a
@@ -235,6 +257,10 @@ The 2020 regression expectation is six heatwave days with a 43.9 C peak and a
 41.1 C baseline. The script fails if it needs external weather or no uncached
 analysis year remains in its test range. Normal regression tests need no such
 fixtures. Windows asyncio requires local socket access even for offline tests.
+Scripts can also run as modules from the `backend` directory, for example
+`.\.venv\Scripts\python.exe -m scripts.manage_cache storage`. Tests additionally
+verify the package's model identity, backend-root `.env` path, API schema, and
+persisted cache field compatibility.
 
 ## Next phase and deployment
 
