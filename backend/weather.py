@@ -3,12 +3,14 @@ from re import I
 import httpx
 import asyncio
 
-
+from math import ceil
 from datetime import date, timedelta,datetime, timezone
 from pydantic import ValidationError
 from models import DailyTemperature
 from models import Location
 from email.utils import parsedate_to_datetime
+from usage import wait_for_usage
+
 
 def parse_weather_days(
     payload:dict,year:int
@@ -99,9 +101,13 @@ async def fetch_weather_payload(
         "temperature_unit": "celsius",
     }
 
+    days_in_year = (date(year + 1, 1, 1) - date(year, 1, 1)).days
+    request_cost = ceil(days_in_year / 14)
+
     for attempt in range(3):
         try:
             async with _weather_slots:
+                await wait_for_usage(request_cost)
                 response = await client.get(
                     "https://archive-api.open-meteo.com/v1/archive",
                     params=params,

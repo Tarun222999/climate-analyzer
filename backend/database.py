@@ -37,3 +37,33 @@ def ensure_weather_index(collection) -> str:
         name=WEATHER_INDEX_NAME,
         unique=True,
     )
+
+
+BASELINE_INDEX_NAME = "unique_baseline_threshold"
+
+
+BASELINE_INDEX_FIELDS = [
+    (field, ASCENDING)
+    for field in (
+        "location.latitude",
+        "location.longitude",
+        "location.timezone",
+        "source",
+        "dataset",
+        "temperature_unit",
+        "baseline_start_year",
+        "baseline_end_year",
+        "percentile",
+        "percentile_method",
+        "baseline_version",
+    )
+]
+
+
+
+def ensure_baseline_index(collection) -> str:
+    return collection.create_index(
+        BASELINE_INDEX_FIELDS,
+        name=BASELINE_INDEX_NAME,
+        unique=True,
+    )

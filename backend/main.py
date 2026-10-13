@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import ValidationError
 
-from backend.models import LocationMatch
+from models import LocationMatch
 
 import httpx
 

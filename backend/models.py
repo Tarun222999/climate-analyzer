@@ -93,3 +93,56 @@ class WeatherYear(BaseModel):
             raise ValueError("Invalid dates must correspond to missing readings")
 
         return self
+
+
+
+class BaselineThreshold(BaseModel):
+    model_config = ConfigDict(extra="forbid",allow_inf_nan=False)
+
+    location: Location
+    grid_latitude: float = Field(ge=-90, le=90)
+    grid_longitude: float = Field(ge=-180,le=180)
+    timezone: str = Field(min_length=1,max_length=100)
+
+    source: Literal["open-meteo"] = "open-meteo"
+    dataset: Literal["era5_land"] = "era5_land"
+    temperature_unit: Literal["celsius"] = "celsius"
+
+    baseline_start_year: Literal[1991] = 1991
+    baseline_end_year: Literal[2020] = 2020
+    percentile: Literal[95] = 95
+    percentile_method: Literal["linear"] = "linear"
+    baseline_version: Literal["baseline-v1"] = "baseline-v1"
+
+    threshold_c: float = Field(strict=True, ge=-100, le=70)
+    expected_days: Literal[10958] = 10958
+    valid_days: int = Field(strict=True, ge=0, le=10958)
+    calculated_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def validate_coverage(self) -> Self:
+        if self.valid_days / self.expected_days < 0.95:
+            raise ValueError("Baseline requires 95% valid days")
+        return self
+
+
+
+class HeatwaveEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    observed_start_date: date
+    observed_end_date: date
+    observed_duration_days: int = Field(strict=True, ge=3)
+    peak_temperature_c: float = Field(strict=True, ge=-100, le=70)
+    start_boundary_resolved: bool = Field(strict=True)
+    end_boundary_resolved: bool = Field(strict=True)
+
+    @model_validator(mode="after")
+    def validate_duration(self) -> Self:
+        duration = (
+            self.observed_end_date - self.observed_start_date
+        ).days + 1
+        if self.observed_duration_days != duration:
+            raise ValueError("Event duration must match its observed dates")
+        return self
+        
