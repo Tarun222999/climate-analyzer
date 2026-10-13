@@ -29,6 +29,7 @@ async def load_heatwave_context(
     client: httpx.AsyncClient,
     request: AnalysisRequest,
     threshold_c: float,
+    expected_grid: tuple | None = None,
 ) -> list[DailyTemperature]:
     if not isfinite(threshold_c) or not -100 <= threshold_c <= 70:
         raise ValueError("Invalid heatwave threshold")
@@ -56,7 +57,7 @@ async def load_heatwave_context(
     )
 
     days = await get_weather_dates(
-        collection, client, request.location, start, end
+        collection, client, request.location, start, end, expected_grid=expected_grid
     )
 
     def is_hot(day: DailyTemperature) -> bool:
@@ -74,6 +75,7 @@ async def load_heatwave_context(
         extra = await get_weather_dates(
             collection, client, request.location,
             new_start, start - timedelta(days=1),
+            expected_grid=expected_grid,
         )
         days = extra + days
         start = new_start
@@ -87,6 +89,7 @@ async def load_heatwave_context(
         extra = await get_weather_dates(
             collection, client, request.location,
             end + timedelta(days=1), new_end,
+            expected_grid=expected_grid,
         )
         days.extend(extra)
         end = new_end
@@ -411,6 +414,10 @@ async def build_analysis(
         client,
         request,
         baseline.threshold_c,
+        expected_grid=(
+            baseline.grid_latitude, baseline.grid_longitude, baseline.timezone,
+            baseline.source, baseline.dataset, baseline.temperature_unit,
+        ),
     )
 
     summary, events = analyze_heatwave_selection(

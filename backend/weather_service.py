@@ -296,6 +296,7 @@ async def get_weather_dates(
     location: Location,
     start_date: date,
     end_date: date,
+    expected_grid: tuple | None = None,
 ) -> list[DailyTemperature]:
     if end_date < start_date:
         raise ValueError("End date must not precede start date")
@@ -308,6 +309,14 @@ async def get_weather_dates(
         record = await get_weather_window(
             collection, client, location, cursor, stop
         )
+        grid = (
+            record.grid_latitude, record.grid_longitude, record.timezone,
+            record.source, record.dataset, record.temperature_unit,
+        )
+        if expected_grid is None:
+            expected_grid = grid
+        elif grid != expected_grid:
+            raise ValueError("Weather metadata does not match the baseline or adjacent years")
         days.extend(
             day for day in record.days
             if cursor <= day.date <= stop
