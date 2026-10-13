@@ -27,6 +27,7 @@ from usage import UsageLimitError
 from geocoding import fetch_locations
 from cache_io import drain_cache_operations
 from weather_service import start_weather_fetches, shutdown_weather_fetches
+from maintenance import monitor_storage
 
 from fastapi import Depends
 from request_limits import RequestRateLimiter,RequestConcurrencyLimiter
@@ -62,9 +63,15 @@ async def lifespan(app: FastAPI):
             app.state.analysis_concurrency = RequestConcurrencyLimiter(2)
             app.state.location_slots = asyncio.Semaphore(2)
 
+            storage_stop = asyncio.Event()
+            storage_task = asyncio.create_task(
+                monitor_storage(db, settings.storage_budget_bytes, storage_stop)
+            )
             try:
                 yield
             finally:
+                storage_stop.set()
+                await storage_task
                 await shutdown_weather_fetches(mongo)
                 await drain_cache_operations()
     finally:
