@@ -11,6 +11,7 @@ from baseline import (
 from cache import load_baseline_threshold, save_baseline_threshold
 from models import BaselineThreshold, Location
 from weather_service import get_weather_year
+from cache_io import run_cache_operation
 
 
 async def get_baseline_threshold(
@@ -19,7 +20,7 @@ async def get_baseline_threshold(
     client:httpx.AsyncClient,
     location:Location
 ) -> BaselineThreshold:
-    cached = await asyncio.to_thread(
+    cached = await run_cache_operation(
         load_baseline_threshold,baseline_collection,location
     )
 
@@ -49,11 +50,11 @@ async def get_baseline_threshold(
         calculated_at=datetime.now(timezone.utc),
     )
 
-    await asyncio.to_thread(
+    await run_cache_operation(
         save_baseline_threshold,baseline_collection,baseline
     )
 
-    saved = await asyncio.to_thread(
+    saved = await run_cache_operation(
         load_baseline_threshold,baseline_collection,location
     )
 

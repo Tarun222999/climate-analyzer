@@ -16,6 +16,7 @@ from models import (
     SelectedHeatwaveEvent,
 )
 from weather_service import get_weather_dates
+from cache_io import run_cache_operation
 from analysis_cache import load_analysis, save_analysis
 
 CONTEXT_PADDING_DAYS = 2
@@ -438,7 +439,7 @@ async def get_analysis(
     client: httpx.AsyncClient,
     request: AnalysisRequest,
 ) -> AnalysisResult:
-    cached = await asyncio.to_thread(
+    cached = await run_cache_operation(
         load_analysis, analysis_collection, request
     )
 
@@ -450,14 +451,14 @@ async def get_analysis(
             request,
         )
 
-        stored = await asyncio.to_thread(
+        stored = await run_cache_operation(
             save_analysis, analysis_collection, result
         )
 
         if not stored:
             return result
 
-        cached = await asyncio.to_thread(
+        cached = await run_cache_operation(
             load_analysis, analysis_collection, request
         )
         if cached is None:

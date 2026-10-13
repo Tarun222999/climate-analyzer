@@ -1,6 +1,7 @@
 import asyncio
 from datetime import date, datetime, timedelta, timezone
 from operator import le
+from cache_io import run_cache_operation
 
 import httpx
 
@@ -16,7 +17,7 @@ async def _load_or_fetch_weather_year(
     year:int
 ) -> WeatherYear:
 
-    cached = await asyncio.to_thread(
+    cached = await run_cache_operation(
         load_weather_year,collection,location,year
     )
 
@@ -41,8 +42,8 @@ async def _load_or_fetch_weather_year(
         ),
     )
 
-    await asyncio.to_thread(save_weather_year,collection,record)
-    saved = await asyncio.to_thread(
+    await run_cache_operation(save_weather_year,collection,record)
+    saved = await run_cache_operation(
         load_weather_year,collection,location,year
     )
 
@@ -54,6 +55,24 @@ async def _load_or_fetch_weather_year(
 
 
 _inflight : dict[tuple,asyncio.Task[WeatherYear]]={}
+_closing_clients: set[int] = set()
+
+
+def start_weather_fetches(mongo_client):
+    _closing_clients.discard(id(mongo_client))
+
+
+async def shutdown_weather_fetches(mongo_client, grace_seconds=10.0):
+    """Drain this client's shared fetches, then cancel remaining HTTP work."""
+    client_id = id(mongo_client)
+    _closing_clients.add(client_id)
+    tasks = [task for key, task in tuple(_inflight.items()) if key[0] == client_id]
+    if not tasks:
+        return
+    _, pending = await asyncio.wait(tasks, timeout=grace_seconds)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def get_weather_window(
@@ -65,13 +84,15 @@ async def get_weather_window(
 ) -> WeatherYear:
     if end_date < start_date or start_date.year != end_date.year:
         raise ValueError("Expected an ordered window within one year")
+    if id(collection.database.client) in _closing_clients:
+        raise RuntimeError("Weather service is shutting down")
     key = (
         id(collection.database.client),
         collection.full_name,
         tuple(weather_key(location, start_date.year).items()),
     )
     while True:
-        cached = await asyncio.to_thread(
+        cached = await run_cache_operation(
             load_weather_year, collection, location, start_date.year
         )
 
@@ -238,7 +259,7 @@ async def _load_or_fetch_weather_window(
      if end_date < start_date or start_date.year != end_date.year:
         raise ValueError("Expected an ordered window within one year")
 
-     record = await asyncio.to_thread(
+     record = await run_cache_operation(
         load_weather_year, collection, location, start_date.year
      )
 
@@ -253,9 +274,9 @@ async def _load_or_fetch_weather_window(
             record,location,payload,start,stop
         )
 
-        await asyncio.to_thread(save_weather_year,collection,merged)
+        await run_cache_operation(save_weather_year,collection,merged)
 
-        record = await asyncio.to_thread(
+        record = await run_cache_operation(
             load_weather_year, collection, location, start_date.year
         )
 
