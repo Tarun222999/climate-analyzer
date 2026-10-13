@@ -26,7 +26,9 @@ from models import AnalysisRequest, AnalysisResult
 from usage import UsageLimitError
 
 from fastapi import Depends
-from request_limits import RequestRateLimiter
+from request_limits import RequestRateLimiter,RequestConcurrencyLimiter
+
+from fastapi.middleware.cors import CORSMiddleware
 
 
 @asynccontextmanager
@@ -53,6 +55,7 @@ async def lifespan(app: FastAPI):
             app.state.http_client = client
             app.state.analysis_limiter = RequestRateLimiter(6, 60.0)
             app.state.location_limiter = RequestRateLimiter(30, 60.0)
+            app.state.analysis_concurrency = RequestConcurrencyLimiter(2)
 
             yield
     finally:
@@ -65,12 +68,63 @@ app = FastAPI(
 )
 
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=Settings().cors_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
+
+
+def check_request_limit(
+    request: Request,
+    limiter: RequestRateLimiter,
+) -> None:
+    client_key = request.client.host if request.client else "unknown"
+    retry_after = limiter.reserve(client_key)
+
+    if retry_after > 0:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests. Try again later.",
+            headers={"Retry-After": str(max(1, ceil(retry_after)))},
+        )
+
+
+async def limit_analysis_requests(request: Request) -> None:
+    check_request_limit(request, request.app.state.analysis_limiter)
+
+
+async def limit_location_requests(request: Request) -> None:
+    check_request_limit(request, request.app.state.location_limiter)
+
+
+async def limit_analysis_concurrency(request: Request):
+    limiter = request.app.state.analysis_concurrency
+
+    if not limiter.try_acquire():
+        raise HTTPException(
+            status_code=503,
+            detail="Analysis capacity is busy. Try again shortly.",
+            headers={"Retry-After": "1"},
+        )
+
+    try:
+        yield
+    finally:
+        limiter.release()
+
+
 @app.get("/api/health")
 def health():
     return {"status":"ok"}
 
 
-@app.get("/api/locations",response_model=list[LocationMatch])
+@app.get(
+    "/api/locations",
+    response_model=list[LocationMatch],
+    dependencies=[Depends(limit_location_requests)],
+)
 async def search_locations(
     query: Annotated[str,Query(min_length=2,max_length=100)],
 ):
@@ -134,7 +188,14 @@ async def search_locations(
 
 
 
-@app.post("/api/analysis", response_model=AnalysisResult)
+@app.post(
+    "/api/analysis",
+    response_model=AnalysisResult,
+    dependencies=[
+        Depends(limit_analysis_requests),
+        Depends(limit_analysis_concurrency),
+    ],
+)
 async def analyze(
     data: AnalysisRequest,
     request: Request,
