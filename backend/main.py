@@ -24,6 +24,7 @@ from pymongo.errors import PyMongoError
 from analysis_service import get_analysis
 from models import AnalysisRequest, AnalysisResult
 from usage import UsageLimitError
+from geocoding import fetch_locations
 
 from fastapi import Depends
 from request_limits import RequestRateLimiter,RequestConcurrencyLimiter
@@ -56,6 +57,7 @@ async def lifespan(app: FastAPI):
             app.state.analysis_limiter = RequestRateLimiter(6, 60.0)
             app.state.location_limiter = RequestRateLimiter(30, 60.0)
             app.state.analysis_concurrency = RequestConcurrencyLimiter(2)
+            app.state.location_slots = asyncio.Semaphore(2)
 
             yield
     finally:
@@ -126,6 +128,7 @@ def health():
     dependencies=[Depends(limit_location_requests)],
 )
 async def search_locations(
+    request: Request,
     query: Annotated[str,Query(min_length=2,max_length=100)],
 ):
     search_term=query.strip()
@@ -137,21 +140,28 @@ async def search_locations(
         )
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(
-                "https://geocoding-api.open-meteo.com/v1/search",
-                 params = {
-                    "name":search_term,
-                    "count":10,
-                    "language":"en",
-                 }
+        async with asyncio.timeout(15):
+            response = await fetch_locations(
+                request.app.state.http_client,
+                request.app.state.location_slots,
+                search_term,
             )
-            response.raise_for_status()
-    except httpx.TimeoutException as exc:
+    except UsageLimitError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Location request budget exhausted. Try again later.",
+            headers={"Retry-After": str(max(1, ceil(exc.retry_after)))},
+        ) from exc
+    except (TimeoutError, httpx.TimeoutException) as exc:
         raise HTTPException(
             status_code=504,detail="Location search timed out"
         ) from exc
 
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=503 if exc.response.status_code == 429 else 502,
+            detail="Location search provider is temporarily unavailable.",
+        ) from exc
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=502,detail="Location search service unavailable"
