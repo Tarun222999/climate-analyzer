@@ -67,3 +67,21 @@ def ensure_baseline_index(collection) -> str:
         name=BASELINE_INDEX_NAME,
         unique=True,
     )
+
+from analysis_cache import ANALYSIS_KEY_FIELDS
+
+
+ANALYSIS_INDEX_NAME = "unique_analysis"
+
+ANALYSIS_INDEX_FIELDS = [
+    (field, ASCENDING)
+    for field in ANALYSIS_KEY_FIELDS
+]
+
+
+def ensure_analysis_index(collection) -> str:
+    return collection.create_index(
+        ANALYSIS_INDEX_FIELDS,
+        name=ANALYSIS_INDEX_NAME,
+        unique=True,
+    )

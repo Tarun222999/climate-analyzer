@@ -2,14 +2,21 @@ from datetime import date, datetime, timedelta, timezone
 from math import isfinite
 
 import httpx
+import asyncio
 
-from models import AnalysisRequest, DailyTemperature, HeatwaveSummary, SelectedHeatwaveEvent
-
+from baseline_service import get_baseline_threshold
 from heatwaves import select_heatwaves
+from models import (
+    AnalysisRequest,
+    AnalysisResult,
+    AnnualHeatwaveMetrics,
+    DailyTemperature,
+    HeatwaveSummary,
+    RollingHeatwaveMetrics,
+    SelectedHeatwaveEvent,
+)
 from weather_service import get_weather_dates
-from models import AnnualHeatwaveMetrics
-from models import RollingHeatwaveMetrics
-
+from analysis_cache import load_analysis, save_analysis
 
 CONTEXT_PADDING_DAYS = 2
 CONTEXT_CHUNK_DAYS = 30
@@ -328,4 +335,137 @@ def calculate_rolling_averages(
     return rolling
 
 
-    
+
+def generate_heatwave_insights(
+    annual: list[AnnualHeatwaveMetrics],
+) -> list[str]:
+    years = [row.year for row in annual]
+    if years != sorted(set(years)):
+        raise ValueError("Annual years must be unique and ordered")
+
+    if len(annual) < 10:
+        return [
+            "Select at least 10 years to compare two separate five-year periods."
+        ]
+
+    earlier = annual[:5]
+    later = annual[-5:]
+
+    for period in (earlier, later):
+        if (
+            [row.year for row in period]
+            != list(range(period[0].year, period[0].year + 5))
+            or not all(row.metrics_complete for row in period)
+        ):
+            return [
+                "Five-year comparison unavailable: a comparison period "
+                "contains missing years or incomplete metrics."
+            ]
+
+    insights = []
+
+    for field, label in (
+        ("events_starting_in_selection", "heatwave starts"),
+        ("heatwave_days", "heatwave days"),
+    ):
+        earlier_average = sum(getattr(row, field) for row in earlier) / 5
+        later_average = sum(getattr(row, field) for row in later) / 5
+        difference = later_average - earlier_average
+
+        message = (
+            f"Average annual {label}: "
+            f"{earlier_average:.2f} in {earlier[0].year}-{earlier[-1].year}, "
+            f"versus {later_average:.2f} in {later[0].year}-{later[-1].year}. "
+            f"Change: {difference:+.2f} per year."
+        )
+
+        if earlier_average == 0:
+            message += (
+                " Percentage change is unavailable because "
+                "the earlier average was zero."
+            )
+        else:
+            percent = difference / earlier_average * 100
+            message += f" Percentage change: {percent:+.1f}%."
+
+        insights.append(message)
+
+    return insights
+
+async def build_analysis(
+    weather_collection,
+    baseline_collection,
+    client: httpx.AsyncClient,
+    request: AnalysisRequest,
+) -> AnalysisResult:
+    baseline = await get_baseline_threshold(
+        weather_collection,
+        baseline_collection,
+        client,
+        request.location,
+    )
+
+    days = await load_heatwave_context(
+        weather_collection,
+        client,
+        request,
+        baseline.threshold_c,
+    )
+
+    summary, events = analyze_heatwave_selection(
+        days, request, baseline.threshold_c
+    )
+    annual = calculate_annual_metrics(
+        days, request, baseline.threshold_c
+    )
+
+    return AnalysisResult(
+        request=request,
+        baseline=baseline,
+        summary=summary,
+        annual=annual,
+        rolling_averages=calculate_rolling_averages(annual),
+        events=events,
+        insights=generate_heatwave_insights(annual),
+        calculated_at=datetime.now(timezone.utc),
+    )
+
+
+async def get_analysis(
+    weather_collection,
+    baseline_collection,
+    analysis_collection,
+    client: httpx.AsyncClient,
+    request: AnalysisRequest,
+) -> AnalysisResult:
+    cached = await asyncio.to_thread(
+        load_analysis, analysis_collection, request
+    )
+
+    if cached is None:
+        result = await build_analysis(
+            weather_collection,
+            baseline_collection,
+            client,
+            request,
+        )
+
+        stored = await asyncio.to_thread(
+            save_analysis, analysis_collection, result
+        )
+
+        if not stored:
+            return result
+
+        cached = await asyncio.to_thread(
+            load_analysis, analysis_collection, request
+        )
+        if cached is None:
+            raise RuntimeError("Analysis missing after cache write")
+
+    # The cache identifies locations by coordinates and timezone.
+    # Return the display name supplied in this request.
+    return AnalysisResult.model_validate({
+        **cached.model_dump(),
+        "request": request.model_dump(),
+    })

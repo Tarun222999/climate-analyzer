@@ -1,8 +1,13 @@
+from datetime import date, timedelta
+from typing import Literal, Self
 
-from datetime import date,timedelta
-from typing import Self,Literal
-from pydantic import BaseModel, ConfigDict, Field, model_validator,AwareDatetime
-
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 class Location(BaseModel):
     model_config = ConfigDict(extra="forbid",allow_inf_nan=False)
@@ -275,4 +280,63 @@ class RollingHeatwaveMetrics(BaseModel):
     heatwave_days_average: float | None = Field(strict=True, ge=0)
     longest_duration_average_days: float | None = Field(strict=True, ge=0)
 
-    
+
+
+class AnalysisResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    request: AnalysisRequest
+    baseline: BaselineThreshold
+    summary: HeatwaveSummary
+    annual: list[AnnualHeatwaveMetrics]
+    rolling_averages: list[RollingHeatwaveMetrics]
+    events: list[SelectedHeatwaveEvent]
+    insights: list[str]
+    calculated_at: AwareDatetime
+
+    analysis_version: Literal["analysis-v1"] = "analysis-v1"
+    minimum_consecutive_days: Literal[3] = 3
+    threshold_comparison: Literal["strictly_above"] = "strictly_above"
+    context_padding_days: Literal[2] = 2
+    context_chunk_days: Literal[30] = 30
+    maximum_context_days_per_side: Literal[366] = 366
+
+    @model_validator(mode="after")
+    def validate_result(self) -> Self:
+        expected_years = list(range(
+            self.request.start_year,
+            self.request.end_year + 1,
+        ))
+
+        if [row.year for row in self.annual] != expected_years:
+            raise ValueError("Annual metrics must match selected years")
+
+        if [row.year for row in self.rolling_averages] != expected_years:
+            raise ValueError("Rolling metrics must match selected years")
+
+        if self.summary.expected_days != sum(
+            row.expected_days for row in self.annual
+        ):
+            raise ValueError("Summary and annual expected days must agree")
+
+        if self.summary.valid_days != sum(
+            row.valid_days for row in self.annual
+        ):
+            raise ValueError("Summary and annual valid days must agree")
+
+        requested_location = self.request.location
+        baseline_location = self.baseline.location
+
+        if (
+            requested_location.latitude,
+            requested_location.longitude,
+            requested_location.timezone,
+        ) != (
+            baseline_location.latitude,
+            baseline_location.longitude,
+            baseline_location.timezone,
+        ):
+            raise ValueError("Baseline must match the requested location")
+
+        return self
+
