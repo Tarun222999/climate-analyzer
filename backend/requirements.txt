@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+numpy
+pymongo
+dnspython
+httpx
+pydantic
+pydantic-settings
