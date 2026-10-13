@@ -1,9 +1,13 @@
-import httpx
 
-from datetime import date, timedelta
+import httpx
+import asyncio
+
+
+from datetime import date, timedelta,datetime, timezone
 from pydantic import ValidationError
 from models import DailyTemperature
 from models import Location
+from email.utils import parsedate_to_datetime
 
 def parse_weather_days(
     payload:dict,year:int
@@ -58,28 +62,28 @@ def parse_weather_days(
 
 
 
-
+_weather_slots = asyncio.Semaphore(2)
 async def fetch_weather_payload(
     client:httpx.AsyncClient,
     location:Location,
     year:int
 ) -> dict:
-    response = await client.get(
-        "https://archive-api.open-meteo.com/v1/archive",
-        params = {
-            "latitude":location.latitude,
-            "longitude":location.longitude,
-           "start_date": f"{year}-01-01",
-            "end_date": f"{year}-12-31",
-            "daily": "temperature_2m_max",
-            "models": "era5_land",
-            "timezone": location.timezone,
-            "temperature_unit": "celsius",
-        },
-        timeout=30.0
-    )
-
-    response.raise_for_status()
+    async with _weather_slots:      
+        response = await client.get(
+            "https://archive-api.open-meteo.com/v1/archive",
+            params = {
+                "latitude":location.latitude,
+                "longitude":location.longitude,
+                "start_date": f"{year}-01-01",
+                "end_date": f"{year}-12-31",
+                "daily": "temperature_2m_max",
+                "models": "era5_land",
+                "timezone": location.timezone,
+                "temperature_unit": "celsius",
+            },
+            timeout=30.0
+        )
+        response.raise_for_status()
 
     payload = response.json()
 
@@ -87,3 +91,21 @@ async def fetch_weather_payload(
         raise ValueError("Expected a weather response object")
     return payload
 
+
+
+def retry_after_seconds(
+    value:str | None,
+    now:datetime
+) -> float | None:
+    if value is None:
+        return None
+    value = value.strip()
+    if value.isascii() and value.isdigit():
+        return float(value)
+    try:
+        retry_at = parsedate_to_datetime(value)
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        return max(0.0, (retry_at - now).total_seconds())
+    except (ValueError, TypeError, OverflowError):
+        return None

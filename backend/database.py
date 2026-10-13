@@ -1,0 +1,39 @@
+
+from pymongo import ASCENDING, MongoClient
+
+from config import Settings
+
+
+
+WEATHER_INDEX_NAME = "unique_weather_year"
+
+WEATHER_INDEX_FIELDS = [
+    ("location.latitude", ASCENDING),
+    ("location.longitude", ASCENDING),
+    ("location.timezone", ASCENDING),
+    ("year", ASCENDING),
+    ("source", ASCENDING),
+    ("dataset", ASCENDING),
+    ("temperature_unit", ASCENDING),
+]
+
+
+
+
+def create_mongo_client(settings: Settings) -> MongoClient:
+    return MongoClient(
+        settings.mongodb_uri.get_secret_value(),
+        serverSelectionTimeoutMS=10000,
+        connectTimeoutMS=10000,
+        socketTimeoutMS=10000,
+        tz_aware=True,
+    )
+
+
+
+def ensure_weather_index(collection) -> str:
+    return collection.create_index(
+        WEATHER_INDEX_FIELDS,
+        name=WEATHER_INDEX_NAME,
+        unique=True,
+    )
