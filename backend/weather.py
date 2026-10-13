@@ -12,9 +12,13 @@ from email.utils import parsedate_to_datetime
 from usage import wait_for_usage
 
 
-def parse_weather_days(
-    payload:dict,year:int
+def parse_weather_window(
+    payload:dict,
+    start_date: date,
+    end_date: date,
 )-> tuple[list[DailyTemperature],list[date]]:
+    if end_date < start_date:
+        raise ValueError("End data must not precede start date")
     units = payload.get("daily_units")
     if not isinstance(units,dict):
         raise ValueError("Missing daily units")
@@ -30,8 +34,8 @@ def parse_weather_days(
     if not isinstance(dates, list) or not isinstance(temperatures, list):
         raise ValueError("Expected date and temperature arrays")
     
-    first_day = date(year,1,1)
-    day_count = (date(year+1,1,1)-first_day).days
+    first_day = start_date
+    day_count = (end_date - start_date).days + 1
 
     expected_dates = [
         (first_day + timedelta(days=i)).isoformat()
@@ -39,7 +43,7 @@ def parse_weather_days(
     ]
 
     if dates != expected_dates:
-        raise ValueError("Expected every date in the year, in order")
+        raise ValueError("Expected every requested date in order")
     if len(temperatures) != day_count:
         raise ValueError("Date and temperature counts differ")
         
@@ -85,24 +89,25 @@ def retry_after_seconds(
 _weather_slots = asyncio.Semaphore(2)
 
 
-async def fetch_weather_payload(
+async def fetch_weather_window_payload(
     client: httpx.AsyncClient,
     location: Location,
-    year: int,
+    start_date:date,
+    end_date:date
 ) -> dict:
     params = {
         "latitude": location.latitude,
         "longitude": location.longitude,
-        "start_date": f"{year}-01-01",
-        "end_date": f"{year}-12-31",
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
         "daily": "temperature_2m_max",
         "models": "era5_land",
         "timezone": location.timezone,
         "temperature_unit": "celsius",
     }
 
-    days_in_year = (date(year + 1, 1, 1) - date(year, 1, 1)).days
-    request_cost = ceil(days_in_year / 14)
+    requested_days = (end_date - start_date).days + 1
+    request_cost = ceil(requested_days / 14)
 
     for attempt in range(3):
         try:
@@ -147,3 +152,28 @@ async def fetch_weather_payload(
         await asyncio.sleep(delay)
 
     raise RuntimeError("Retry loop ended unexpectedly")
+
+
+async def fetch_weather_payload(
+    client: httpx.AsyncClient,
+    location: Location,
+    year: int,
+) -> dict:
+    return await fetch_weather_window_payload(
+        client,
+        location,
+        date(year, 1, 1),
+        date(year, 12, 31),
+    )
+
+
+
+def parse_weather_days(
+    payload: dict,
+    year: int,
+) -> tuple[list[DailyTemperature], list[date]]:
+    return parse_weather_window(
+        payload,
+        date(year, 1, 1),
+        date(year, 12, 31),
+    )

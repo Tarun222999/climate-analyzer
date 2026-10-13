@@ -65,6 +65,7 @@ class WeatherYear(BaseModel):
     invalid_dates: list[date]
     expected_days: int = Field(strict=True, ge=365, le=366)
     valid_days: int = Field(strict=True, ge=0, le=366)
+    fetched_dates: list[date] | None = None
 
     @model_validator(mode="after")
     def validate_records(self) -> Self:
@@ -92,6 +93,22 @@ class WeatherYear(BaseModel):
         if not set(self.invalid_dates).issubset(missing_dates):
             raise ValueError("Invalid dates must correspond to missing readings")
 
+        if self.fetched_dates is not None:
+            fetched = set(self.fetched_dates)
+
+            if self.fetched_dates != sorted(fetched):
+                raise ValueError("Fetched dates must be uniqued and ordered")
+            if not fetched.issubset(set(expected)):
+                raise ValueError("Fetched dates must belong to this year")
+
+            valid_dates = {
+                day.date for day in self.days
+                if day.max_temperature_c is not None
+            }
+
+
+            if not (valid_dates | set(self.invalid_dates)).issubset(fetched):
+                raise ValueError("Readings must belong to fetched dates")
         return self
 
 

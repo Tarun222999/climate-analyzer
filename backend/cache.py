@@ -34,9 +34,9 @@ def save_weather_year(collection,record:WeatherYear) -> None:
     document = record.model_dump(mode="json")
     WeatherYear.model_validate(document)
 
-    collection.update_one(
-        weather_key(record.location,record.year),
-        {"$setOnInsert":document},
+    collection.replace_one(
+        weather_key(record.location, record.year),
+        document,
         upsert=True,
     )
 
