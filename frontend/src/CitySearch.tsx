@@ -12,6 +12,7 @@ export default function CitySearch({ onSelect }: Props) {
   const [matches, setMatches] = useState<LocationMatch[]>([])
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [retryAttempt, setRetryAttempt] = useState(0)
 
   useEffect(() => {
     const term = query.trim()
@@ -47,7 +48,7 @@ export default function CitySearch({ onSelect }: Props) {
       window.clearTimeout(timer)
       controller.abort()
     }
-  }, [query, selected])
+  }, [query, selected, retryAttempt])
 
   function chooseCity(city: LocationMatch) {
     setSelected(city)
@@ -67,6 +68,13 @@ export default function CitySearch({ onSelect }: Props) {
         placeholder="Search for a city"
         maxLength={100}
         autoComplete="off"
+        aria-describedby="city-status"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            setMatches([])
+            setStatus('')
+          }
+        }}
         onChange={(event) => {
           setQuery(event.target.value)
           setSelected(null)
@@ -77,8 +85,19 @@ export default function CitySearch({ onSelect }: Props) {
         }}
       />
 
-      <p role="status">{status}</p>
-      {error && <p role="alert">{error}</p>}
+      <p id="city-status" role="status">{status}</p>
+      {error && (
+        <>
+          <p role="alert">{error}</p>
+          <button
+            className="search-retry"
+            type="button"
+            onClick={() => setRetryAttempt((attempt) => attempt + 1)}
+          >
+            Retry city search
+          </button>
+        </>
+      )}
 
       {matches.length > 0 && (
         <ul aria-label="Matching cities">

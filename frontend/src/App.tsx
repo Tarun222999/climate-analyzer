@@ -101,10 +101,13 @@ export default function App() {
               }
             }}
           >
+            <fieldset className="analysis-fields" disabled={loading}>
+              <legend className="visually-hidden">City and year selection</legend>
             <CitySearch
               onSelect={(city) => {
                 setLocation(city)
                 setFormError('')
+                setResult(null)
                 if (!submitting.current) setStatus('')
               }}
             />
@@ -126,7 +129,12 @@ export default function App() {
                 step={1}
                 required
                 value={startYear}
-                onChange={(event) => setStartYear(event.target.value)}
+                onChange={(event) => {
+                  setStartYear(event.target.value)
+                  setFormError('')
+                  setStatus('')
+                  setResult(null)
+                }}
               />
             </div>
 
@@ -140,13 +148,19 @@ export default function App() {
                 step={1}
                 required
                 value={endYear}
-                onChange={(event) => setEndYear(event.target.value)}
+                onChange={(event) => {
+                  setEndYear(event.target.value)
+                  setFormError('')
+                  setStatus('')
+                  setResult(null)
+                }}
               />
             </div>
 
             <button type="submit" disabled={loading}>
               {loading ? 'Analyzing…' : 'Analyze →'}
             </button>
+            </fieldset>
           </form>
 
           {location && (
@@ -160,6 +174,12 @@ export default function App() {
           {formError && <p className="note" role="alert">{formError}</p>}
           <p className="note" role="status">{status}</p>
         </section>
+        {!result && !loading && !formError && (
+          <section className="panel empty-results" aria-label="Results guidance">
+            <h2>Explore a city’s heatwave history</h2>
+            <p>Select a city and up to 30 full years, then choose Analyze to see results.</p>
+          </section>
+        )}
         {result && (
           <>
             <ResultSummary result={result} />

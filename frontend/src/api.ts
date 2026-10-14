@@ -16,10 +16,13 @@ export async function searchLocations(
   signal?: AbortSignal,
 ): Promise<LocationMatch[]> {
   const params = new URLSearchParams({ query })
+  const timeout = AbortSignal.timeout(20_000)
+  const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout
 
+  try {
   const response = await fetch(
     `${API_BASE_URL}/api/locations?${params}`,
-    { signal },
+    { signal: requestSignal },
   )
 
   if (!response.ok) {
@@ -34,7 +37,19 @@ export async function searchLocations(
     throw new Error('Unable to search for cities. Please try again.')
   }
 
-  return response.json() as Promise<LocationMatch[]>
+  const matches = await response.json() as LocationMatch[]
+  if (!Array.isArray(matches)) throw new Error('City search returned an invalid response. Please retry.')
+  return matches
+  } catch (err) {
+    if (signal?.aborted) throw err
+    if (timeout.aborted) {
+      throw new Error('City search timed out. Please retry.', { cause: err })
+    }
+    if (err instanceof SyntaxError) {
+      throw new Error('City search returned an invalid response. Please retry.', { cause: err })
+    }
+    throw err
+  }
 }
 
 
@@ -96,6 +111,9 @@ export async function analyzeLocation(
             'Cannot reach the API. Check your connection and backend.',
             { cause: err },
           )
+        }
+        if (err instanceof SyntaxError) {
+          throw new Error('The API returned an invalid response. Please try again.', { cause: err })
         }
       
         throw err

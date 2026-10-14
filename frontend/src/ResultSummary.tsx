@@ -66,6 +66,12 @@ export default function ResultSummary({
         Valid daily readings: {summary.valid_days.toLocaleString()}
         {' / '}{summary.expected_days.toLocaleString()}.
       </p>
+      {summary.peak_above_threshold_c !== null && (
+        <p className="note">
+          {summary.metrics_complete ? 'Peak' : 'Observed peak'} heatwave temperature
+          was {summary.peak_above_threshold_c.toFixed(1)}°C above the baseline threshold.
+        </p>
+      )}
 
       {!summary.metrics_complete && (
         <p className="note">

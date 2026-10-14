@@ -184,3 +184,79 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+form {
+  display: block;
+}
+
+.analysis-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)) auto;
+  align-items: start;
+  gap: 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.analysis-fields > * {
+  min-width: 0;
+}
+
+.analysis-fields > button {
+  margin-top: 24px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.panel {
+  min-width: 0;
+}
+
+.stat strong,
+.stat small,
+.stat span {
+  overflow-wrap: anywhere;
+}
+
+header {
+  flex-wrap: wrap;
+}
+
+.empty-results {
+  margin-top: 20px;
+}
+
+[role="alert"] {
+  color: #a12b2b;
+}
+
+.search-retry {
+  width: auto;
+  margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+  .analysis-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .analysis-fields,
+  .cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analysis-fields > button {
+    margin-top: 0;
+  }
+}
