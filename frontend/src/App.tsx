@@ -7,6 +7,9 @@ import FrequencyChart from './FrequencyChart'
 import HeatwaveDaysChart from './HeatwaveDaysChart'
 import DurationChart from './DurationChart'
 import TemperatureChart from './TemperatureChart'
+import EventDetails from './EventDetails'
+import Methodology from './Methodology'
+import Insights from './Insights'
 import './App.css'
 
 export default function App() {
@@ -166,6 +169,9 @@ export default function App() {
               <DurationChart result={result} />
               <TemperatureChart result={result} />
             </div>
+            <Insights result={result} />
+            <EventDetails result={result} />
+            <Methodology result={result} />
           </>
         )}
       </main>
