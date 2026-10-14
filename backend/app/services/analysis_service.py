@@ -18,6 +18,8 @@ from app.models import (
 from app.services.weather_service import get_weather_dates
 from app.storage.cache_io import run_cache_operation
 from app.storage.analysis_cache import load_analysis, save_analysis
+from app.calculations.regression import calculate_event_start_regression
+
 
 CONTEXT_PADDING_DAYS = 2
 CONTEXT_CHUNK_DAYS = 30
@@ -433,6 +435,7 @@ async def build_analysis(
         summary=summary,
         annual=annual,
         rolling_averages=calculate_rolling_averages(annual),
+        regression=calculate_event_start_regression(annual),
         events=events,
         insights=generate_heatwave_insights(annual),
         calculated_at=datetime.now(timezone.utc),

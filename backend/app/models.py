@@ -280,6 +280,67 @@ class RollingHeatwaveMetrics(BaseModel):
     heatwave_days_average: float | None = Field(strict=True, ge=0)
     longest_duration_average_days: float | None = Field(strict=True, ge=0)
 
+class RegressionPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    year: int = Field(strict=True, ge=1950, le=2025)
+    observed_event_starts: int = Field(strict=True, ge=0)
+    fitted_event_starts: float = Field(strict=True)
+
+
+class HeatwaveRegression(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    metric: Literal["events_starting_in_selection"] = (
+        "events_starting_in_selection"
+    )
+    minimum_complete_years: Literal[10] = 10
+
+    status: Literal["available", "unavailable"]
+    reason: Literal["insufficient_complete_years"] | None
+
+    years_used: list[int]
+    slope_events_per_year: float | None = Field(strict=True)
+    change_per_decade: float | None = Field(strict=True)
+    fitted_values: list[RegressionPoint]
+
+    @model_validator(mode="after")
+    def validate_availability(self) -> Self:
+        if self.years_used != sorted(set(self.years_used)):
+            raise ValueError("Included years must be unique and ordered")
+
+        if any(
+            type(year) is not int or not 1950 <= year <= 2025
+            for year in self.years_used
+        ):
+            raise ValueError("Invalid included year")
+
+        if self.status == "available":
+            if len(self.years_used) < self.minimum_complete_years:
+                raise ValueError("Regression requires 10 complete years")
+            if self.reason is not None:
+                raise ValueError("Available regression cannot have a failure reason")
+            if (
+                self.slope_events_per_year is None
+                or self.change_per_decade is None
+            ):
+                raise ValueError("Available regression requires trend values")
+            if [point.year for point in self.fitted_values] != self.years_used:
+                raise ValueError("Fitted points must match included years")
+        else:
+            if len(self.years_used) >= self.minimum_complete_years:
+                raise ValueError("Insufficient-year status requires fewer than 10 years")
+            if self.reason != "insufficient_complete_years":
+                raise ValueError("Unavailable regression requires a reason")
+            if (
+                self.slope_events_per_year is not None
+                or self.change_per_decade is not None
+                or self.fitted_values
+            ):
+                raise ValueError("Unavailable regression cannot contain fitted results")
+
+        return self
+
 
 
 class AnalysisResult(BaseModel):
@@ -290,11 +351,12 @@ class AnalysisResult(BaseModel):
     summary: HeatwaveSummary
     annual: list[AnnualHeatwaveMetrics]
     rolling_averages: list[RollingHeatwaveMetrics]
+    regression: HeatwaveRegression
     events: list[SelectedHeatwaveEvent]
     insights: list[str]
     calculated_at: AwareDatetime
 
-    analysis_version: Literal["analysis-v1"] = "analysis-v1"
+    analysis_version: Literal["analysis-v2"] = "analysis-v2"
     minimum_consecutive_days: Literal[3] = 3
     threshold_comparison: Literal["strictly_above"] = "strictly_above"
     context_padding_days: Literal[2] = 2

@@ -144,3 +144,75 @@ class AnalysisApiTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status_code, 429)
             self.assertEqual(build.await_count, 6)
             self.assertGreaterEqual(int(response.headers["Retry-After"]), 1)
+
+    async def test_ten_year_response_contains_regression(self):
+        payload = {**PAYLOAD, "start_year": 2011, "end_year": 2020}
+        response = await self.api.post("/api/analysis", json=payload)
+        self.assertEqual(response.status_code, 200, response.text)
+
+        result = AnalysisResult.model_validate(response.json())
+        trend = result.regression
+
+        self.assertEqual(result.analysis_version, "analysis-v2")
+        self.assertEqual(trend.status, "available")
+        self.assertIsNone(trend.reason)
+        self.assertEqual(trend.years_used, list(range(2011, 2021)))
+        self.assertEqual(
+            [point.year for point in trend.fitted_values], trend.years_used
+        )
+
+        # This fixture has zero starts until one event in 2020.
+        self.assertEqual(
+            [point.observed_event_starts for point in trend.fitted_values],
+            [0] * 9 + [1],
+        )
+        self.assertAlmostEqual(trend.slope_events_per_year, 4.5 / 82.5)
+        self.assertAlmostEqual(
+            trend.change_per_decade, trend.slope_events_per_year * 10
+        )
+        self.assertEqual(len(self.calls), 31)
+
+    async def test_old_analysis_cache_rebuilt_without_weather_fetches(self):
+        initial = await self.api.post("/api/analysis", json=PAYLOAD)
+        self.assertEqual(initial.status_code, 200, initial.text)
+        calls_before = len(self.calls)
+        baseline_before = self.db["baseline_thresholds"].find_one({})
+
+        # Simulate an old stored response in this test's memory database.
+        legacy = initial.json()
+        legacy["analysis_version"] = "analysis-v1"
+        legacy.pop("regression")
+
+        analyses = self.db["analyses"]
+        with analyses.lock:
+            analyses.documents = [legacy]
+
+        rebuilt = await self.api.post("/api/analysis", json=PAYLOAD)
+        self.assertEqual(rebuilt.status_code, 200, rebuilt.text)
+        result = rebuilt.json()
+
+        self.assertEqual(result["analysis_version"], "analysis-v2")
+        self.assertEqual(result["regression"]["status"], "unavailable")
+        self.assertEqual(
+            result["regression"]["reason"], "insufficient_complete_years"
+        )
+        self.assertIsNone(result["regression"]["slope_events_per_year"])
+        self.assertEqual(result["regression"]["fitted_values"], [])
+        self.assertEqual(len(self.calls), calls_before)
+        self.assertEqual(
+            self.db["baseline_thresholds"].find_one({}), baseline_before
+        )
+        self.assertEqual(
+            analyses.count_documents({"analysis_version": "analysis-v1"}), 1
+        )
+        self.assertEqual(
+            analyses.count_documents({"analysis_version": "analysis-v2"}), 1
+        )
+
+        with patch(
+            "app.services.analysis_service.build_analysis", new_callable=AsyncMock
+        ) as build:
+            warm = await self.api.post("/api/analysis", json=PAYLOAD)
+            self.assertEqual(warm.status_code, 200)
+            self.assertEqual(warm.json(), result)
+            build.assert_not_awaited()
