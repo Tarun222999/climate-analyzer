@@ -2,6 +2,10 @@ import { useRef, useState } from 'react'
 import { analyzeLocation } from './api'
 import CitySearch from './CitySearch'
 import type { AnalysisResult, LocationMatch } from './types'
+import ResultSummary from './ResultSummary'
+import FrequencyChart from './FrequencyChart'
+import HeatwaveDaysChart from './HeatwaveDaysChart'
+import DurationChart from './DurationChart'
 import './App.css'
 
 export default function App() {
@@ -93,7 +97,13 @@ export default function App() {
               }
             }}
           >
-            <CitySearch onSelect={setLocation} />
+            <CitySearch
+              onSelect={(city) => {
+                setLocation(city)
+                setFormError('')
+                if (!submitting.current) setStatus('')
+              }}
+            />
 
             <div>
               <label htmlFor="hazard">Hazard</label>
@@ -147,27 +157,14 @@ export default function App() {
           <p className="note" role="status">{status}</p>
         </section>
         {result && (
-          <section className="panel" style={{ marginTop: 20 }}>
-            <h2>{result.request.location.name}</h2>
-            <p>
-              {result.request.start_year}–{result.request.end_year}
-            </p>
-            <p>
-              Heatwave days: {result.summary.heatwave_days ?? 'Unavailable'}
-            </p>
-            <p>
-              {result.summary.metrics_complete ? 'Peak temperature' : 'Observed peak temperature'}:{' '}
-              {result.summary.peak_temperature_c === null
-                ? 'Unavailable'
-                : `${result.summary.peak_temperature_c.toFixed(1)}°C`}
-            </p>
-            {!result.summary.metrics_complete && (
-              <p>
-                Incomplete data: some metrics are unavailable. The observed peak
-                is not guaranteed to be the maximum for the whole period.
-              </p>
-            )}
-          </section>
+          <>
+            <ResultSummary result={result} />
+            <div className="charts">
+              <FrequencyChart result={result} />
+              <HeatwaveDaysChart result={result} />
+              <DurationChart result={result} />
+            </div>
+          </>
         )}
       </main>
     </>

@@ -34,4 +34,20 @@ export interface Location {
     request: AnalysisRequest
     summary: HeatwaveSummary
     calculated_at: string
+    annual: AnnualHeatwaveMetrics[]
+    rolling_averages: RollingHeatwaveMetrics[]
+  }
+
+
+
+  export interface AnnualHeatwaveMetrics extends HeatwaveSummary {
+    year: number
+  }
+  
+  export interface RollingHeatwaveMetrics {
+    year: number
+    window_years: 5
+    events_starting_average: number | null
+    heatwave_days_average: number | null
+    longest_duration_average_days: number | null
   }

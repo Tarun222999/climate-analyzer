@@ -64,3 +64,61 @@
 .city [role="alert"] {
   color: #a12b2b;
 }
+
+form {
+  align-items: start;
+}
+
+form > * {
+  min-width: 0;
+}
+
+form > button {
+  margin-top: 24px;
+}
+
+.city {
+  position: relative;
+}
+
+.city ul {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  margin: 0;
+  padding: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+  gap: 4px;
+  background: white;
+  border: 1px solid #cddbd2;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(24 59 54 / 12%);
+}
+
+.city li button {
+  background: white;
+  color: #183b36;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.city li button:hover,
+.city li button:focus-visible {
+  background: #eaf4ed;
+}
+
+button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+
+.chart-container {
+  position: relative;
+  height: 300px;
+  min-width: 0;
+  margin-top: 20px;
+}
