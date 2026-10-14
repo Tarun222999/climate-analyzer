@@ -31,6 +31,8 @@ export interface Location {
   }
   
   export interface AnalysisResult {
+    analysis_version: 'analysis-v2'
+    regression: HeatwaveRegression
     request: AnalysisRequest
     summary: HeatwaveSummary
     calculated_at: string
@@ -91,3 +93,32 @@ export interface BaselineThreshold {
   valid_days: number
   calculated_at: string
 }
+
+export interface RegressionPoint {
+  year: number
+  observed_event_starts: number
+  fitted_event_starts: number
+}
+
+interface RegressionContext {
+  metric: 'events_starting_in_selection'
+  minimum_complete_years: 10
+  years_used: number[]
+}
+
+export type HeatwaveRegression = RegressionContext & (
+  | {
+      status: 'available'
+      reason: null
+      slope_events_per_year: number
+      change_per_decade: number
+      fitted_values: RegressionPoint[]
+    }
+  | {
+      status: 'unavailable'
+      reason: 'insufficient_complete_years'
+      slope_events_per_year: null
+      change_per_decade: null
+      fitted_values: []
+    }
+)

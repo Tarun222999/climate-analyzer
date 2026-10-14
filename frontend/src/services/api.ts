@@ -97,7 +97,15 @@ export async function analyzeLocation(
         )
       }
   
-      return await response.json() as AnalysisResult
+      const result = await response.json() as AnalysisResult
+      if (
+        result.analysis_version !== 'analysis-v2' ||
+        !result.regression ||
+        !['available', 'unavailable'].includes(result.regression.status)
+      ) {
+        throw new Error('The API returned an incompatible analysis response. Restart the backend with the latest regression code and retry.')
+      }
+      return result
     } catch (err) {
         if (controller.signal.aborted) {
           throw new Error(

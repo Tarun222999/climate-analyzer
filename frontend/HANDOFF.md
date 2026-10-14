@@ -66,7 +66,8 @@ Deployment remains a separate phase.
 - API TypeScript types describe the contract; they are not full runtime schema
   validation. Malformed JSON and non-array location responses are handled.
 - Deployed browser integration and hosting/build settings remain unverified.
-- Regression and map selection remain optional bonuses.
+- Historical regression is now implemented; see REGRESSION_HANDOFF.md for
+  verification limits and user test steps. Map selection remains optional.
 
 ## CSV export and source organization follow-up
 

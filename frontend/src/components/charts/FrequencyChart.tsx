@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Chart from 'chart.js/auto'
 import type { AnalysisResult } from '../../types'
+import { describeRegression, historicalTrendValues } from '../../utils/regression'
 
 export default function FrequencyChart({
   result,
@@ -44,6 +45,18 @@ export default function FrequencyChart({
             tension: 0,
             order: 1,
           },
+          ...(result.regression.status === 'available' ? [{
+            type: 'line' as const,
+            label: 'Historical linear trend',
+            data: historicalTrendValues(result),
+            borderColor: '#7756a8',
+            backgroundColor: '#7756a8',
+            borderDash: [6, 4],
+            pointRadius: 2,
+            spanGaps: false,
+            tension: 0,
+            order: 0,
+          }] : []),
         ],
       },
       options: {
@@ -73,7 +86,9 @@ export default function FrequencyChart({
         <canvas
           ref={canvasRef}
           role="img"
-          aria-label="Annual heatwave starts and trailing five-year average"
+          aria-label={result.regression.status === 'available'
+            ? 'Annual heatwave starts, trailing five-year average, and historical linear trend'
+            : 'Annual heatwave starts and trailing five-year average; historical linear trend unavailable'}
         />
       </div>
 
@@ -81,6 +96,26 @@ export default function FrequencyChart({
         Missing values are unavailable, not zero. Rolling averages require
         five complete consecutive years.
       </p>
+      <p className="note">
+        {describeRegression(result.regression, result.request.start_year, result.request.end_year)}
+      </p>
+      <p className="note">
+        Ordinary least squares uses actual calendar years and excludes incomplete
+        or unknown counts; included years may have gaps. The ten-complete-year
+        minimum is a project rule. This summarizes historical data, not a
+        prediction, causal conclusion, or statistical-significance claim. Fitted
+        counts can be fractional or negative; they are not observed counts.
+      </p>
+      {result.regression.years_used.length > 0 && (
+        <details>
+          <summary>
+            {result.regression.status === 'available'
+              ? 'Complete years used in the historical fit'
+              : 'Complete years eligible for a historical fit'}
+          </summary>
+          <p>{result.regression.years_used.join(', ')}</p>
+        </details>
+      )}
     </section>
   )
 }
