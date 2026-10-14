@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { analyzeLocation } from './api'
 import CitySearch from './CitySearch'
-import type { LocationMatch } from './types'
+import type { AnalysisResult, LocationMatch } from './types'
 import './App.css'
 
 export default function App() {
@@ -9,6 +10,9 @@ export default function App() {
   const [endYear, setEndYear] = useState('2024')
   const [formError, setFormError] = useState('')
   const [status, setStatus] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<AnalysisResult | null>(null)
+  const submitting = useRef(false)
 
   return (
     <>
@@ -28,8 +32,9 @@ export default function App() {
 
         <section className="panel" aria-label="Analysis settings">
           <form
-            onSubmit={(event) => {
+            onSubmit={async (event) => {
               event.preventDefault()
+              if (submitting.current) return
               setFormError('')
               setStatus('')
 
@@ -61,7 +66,31 @@ export default function App() {
                 return
               }
 
-              setStatus('Selection is valid. Analysis connection comes next.')
+              submitting.current = true
+              setLoading(true)
+              setResult(null)
+              setStatus(
+                'Analyzing historical weather. A first analysis may take up to three minutes.',
+              )
+
+              try {
+                const data = await analyzeLocation({
+                  location,
+                  start_year: start,
+                  end_year: end,
+                })
+
+                setResult(data)
+                setStatus('Analysis complete.')
+              } catch (err) {
+                setStatus('')
+                setFormError(
+                  err instanceof Error ? err.message : 'Analysis failed.',
+                )
+              } finally {
+                submitting.current = false
+                setLoading(false)
+              }
             }}
           >
             <CitySearch onSelect={setLocation} />
@@ -101,7 +130,9 @@ export default function App() {
               />
             </div>
 
-            <button type="submit">Analyze →</button>
+            <button type="submit" disabled={loading}>
+              {loading ? 'Analyzing…' : 'Analyze →'}
+            </button>
           </form>
 
           {location && (
@@ -115,6 +146,29 @@ export default function App() {
           {formError && <p className="note" role="alert">{formError}</p>}
           <p className="note" role="status">{status}</p>
         </section>
+        {result && (
+          <section className="panel" style={{ marginTop: 20 }}>
+            <h2>{result.request.location.name}</h2>
+            <p>
+              {result.request.start_year}–{result.request.end_year}
+            </p>
+            <p>
+              Heatwave days: {result.summary.heatwave_days ?? 'Unavailable'}
+            </p>
+            <p>
+              {result.summary.metrics_complete ? 'Peak temperature' : 'Observed peak temperature'}:{' '}
+              {result.summary.peak_temperature_c === null
+                ? 'Unavailable'
+                : `${result.summary.peak_temperature_c.toFixed(1)}°C`}
+            </p>
+            {!result.summary.metrics_complete && (
+              <p>
+                Incomplete data: some metrics are unavailable. The observed peak
+                is not guaranteed to be the maximum for the whole period.
+              </p>
+            )}
+          </section>
+        )}
       </main>
     </>
   )
