@@ -6,6 +6,7 @@ import ResultSummary from './ResultSummary'
 import FrequencyChart from './FrequencyChart'
 import HeatwaveDaysChart from './HeatwaveDaysChart'
 import DurationChart from './DurationChart'
+import TemperatureChart from './TemperatureChart'
 import './App.css'
 
 export default function App() {
@@ -163,6 +164,7 @@ export default function App() {
               <FrequencyChart result={result} />
               <HeatwaveDaysChart result={result} />
               <DurationChart result={result} />
+              <TemperatureChart result={result} />
             </div>
           </>
         )}
