@@ -260,3 +260,16 @@ header {
     margin-top: 0;
   }
 }
+
+
+
+.results-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.results-actions button {
+  width: auto;
+}

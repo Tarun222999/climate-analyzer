@@ -1,4 +1,4 @@
-import type { AnalysisResult, SelectedHeatwaveEvent } from './types'
+import type { AnalysisResult, SelectedHeatwaveEvent } from '../types'
 
 function boundaryNotes(event: SelectedHeatwaveEvent) {
   const notes: string[] = []

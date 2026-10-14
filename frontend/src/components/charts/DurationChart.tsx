@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import Chart from 'chart.js/auto'
-import type { AnalysisResult } from './types'
+import type { AnalysisResult } from '../../types'
 
 export default function DurationChart({
   result,

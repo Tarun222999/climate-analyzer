@@ -57,13 +57,40 @@ Deployment remains a separate phase.
 
 - Frontend: Vercel; backend: Railway with one worker/instance; database: Atlas.
   Configure VITE_API_BASE_URL and the actual frontend origin in backend CORS.
-- Backend currently does not expose Retry-After through CORS. Generic retry
-  guidance works, but an exact retry delay is readable by the cross-origin
-  frontend only if deployment/backend CORS exposes that header. The numeric
-  delay branch was verified with simulated browser responses.
+- Follow-up code inspection confirms backend CORS now includes
+  `expose_headers=["Retry-After"]`. Actual cross-origin error-header exposure
+  has not been independently browser-verified; the numeric delay branch was
+  verified with simulated browser responses during core QA.
 - Browser QA used Chromium device emulation, not physical mobile devices or
   Safari. Real incomplete weather data/provider failures were not induced.
 - API TypeScript types describe the contract; they are not full runtime schema
   validation. Malformed JSON and non-array location responses are handled.
 - Deployed browser integration and hosting/build settings remain unverified.
-- Regression, CSV export, and map selection remain optional bonuses.
+- Regression and map selection remain optional bonuses.
+
+## CSV export and source organization follow-up
+
+- CSV export is implemented in `src/utils/csv.ts`. The results header provides
+  Download CSV only for a successful result. It uses that response, not unsent
+  form fields, and makes no API requests.
+- One row per annual metric, with 26 consistent columns. Location, selected
+  years, baseline percentile/method/threshold, source/dataset/grid context,
+  coverage, completeness, peak interpretation, and blank-value meaning are
+  included. Real zeroes are preserved; null metrics are empty fields.
+- Cells escape quotes/commas/newlines. Formula-leading text is prefixed with
+  an apostrophe; numeric negative values are preserved. The file has a UTF-8
+  BOM, a descriptive filename, and temporary object URLs are revoked.
+- The user verified a real Delhi 2020 browser download and expected filename,
+  annual metrics, completeness, and baseline threshold; lint/build passed.
+- After reorganizing, direct Node checks passed for 26-column CSV round-trip,
+  expected values, zero/null/incomplete rows, text escaping/formula prefixes,
+  numeric negatives, filename, UTF-8 BOM, and object URL/anchor cleanup. Download
+  mechanics used a DOM stub; that check was not a new browser download.
+- Source now uses `components/` for UI, `components/charts/` for charts,
+  `services/api.ts` for HTTP, and `utils/csv.ts` for export. `App.tsx`, `main.tsx`,
+  `types.ts`, and the single `index.css` remain at the source root. Empty
+  App.css and unreferenced starter assets were removed. App coordination/form
+  behavior was not refactored in this organizational pass.
+- Final lint and build passed after file moves. Local frontend port 5173 was
+  stopped during the follow-up, so a browser recheck after moving files remains
+  pending. No server was launched and no deployment/push was performed.

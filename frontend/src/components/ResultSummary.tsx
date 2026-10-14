@@ -1,4 +1,6 @@
-import type { AnalysisResult } from './types'
+import type { AnalysisResult } from '../types'
+import { downloadAnalysisCsv } from '../utils/csv'
+
 
 export default function ResultSummary({
   result,
@@ -47,9 +49,15 @@ export default function ResultSummary({
             {request.start_year}–{request.end_year} · Heatwave analysis
           </p>
         </div>
-        <span className="badge">
-          {summary.metrics_complete ? 'Complete metrics' : 'Incomplete metrics'}
-        </span>
+        <div className="results-actions">
+          <span className="badge">
+            {summary.metrics_complete ? 'Complete metrics' : 'Incomplete metrics'}
+          </span>
+
+          <button type="button" onClick={() => downloadAnalysisCsv(result)}>
+            Download CSV
+          </button>
+        </div>
       </div>
 
       <section className="cards" aria-label="Heatwave summary">

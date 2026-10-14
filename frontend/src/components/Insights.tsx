@@ -1,4 +1,4 @@
-import type { AnalysisResult } from './types'
+import type { AnalysisResult } from '../types'
 
 export default function Insights({ result }: { result: AnalysisResult }) {
   const { start_year, end_year } = result.request

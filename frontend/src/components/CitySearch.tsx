@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { searchLocations } from './api'
-import type { LocationMatch } from './types'
+import { searchLocations } from '../services/api'
+import type { LocationMatch } from '../types'
 
 interface Props {
   onSelect: (location: LocationMatch | null) => void

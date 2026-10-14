@@ -1,4 +1,4 @@
-import type { AnalysisResult } from './types'
+import type { AnalysisResult } from '../types'
 
 export default function Methodology({ result }: { result: AnalysisResult }) {
   const { baseline, summary, request } = result
