@@ -1,14 +1,87 @@
 # Climate Hazard Trend Analyzer
 
-The backend analyzes historical heatwaves for a selected location and full years
-from 1950 through 2025, with at most 30 years per request. It uses FastAPI,
-Pydantic, NumPy, httpx, and MongoDB Atlas. The React/Vite frontend is currently a
-starter; connecting its results page is the next phase. The application has not
-been deployed yet.
+Explore historical heatwaves for a selected city: how often they occurred, how
+long they lasted, and how intense they were. Select full years from **1950-2025**,
+with at most **30 years per request**.
 
-## Backend setup
+**Status:** core backend and frontend, CSV export, and historical linear
+regression are complete locally. Deployment and public end-to-end verification
+are pending. Planned hosting: **Vercel + Railway + MongoDB Atlas free cluster**.
+Public app and repository links will be added after deployment.
 
-Use Python 3.13. From the repository root in PowerShell:
+## Features
+
+- City search with region/country context, validated year selection, and clear
+  loading, retry, and error states.
+- Summary cards for heatwaves starting in the selection, heatwave days, longest
+  event portion within the selection, and peak heatwave temperature.
+- Four interactive Chart.js charts: annual frequency, heatwave days, longest
+  duration, and peak temperature. Eligible metrics have five-year rolling averages.
+- A historical regression overlay on the frequency chart, with fitted change per
+  decade and disclosure of the complete years used.
+- Event details, coverage, baseline methodology, source attribution, and insights.
+- Annual CSV download with location, baseline, grid/source context, units, and
+  completeness. Missing metrics stay blank; real zeroes stay zero.
+- Persistent weather/analysis caching, input validation, bounded provider requests,
+  request limits, and explicit handling of incomplete data.
+
+## Stack and architecture
+
+| Layer | Technologies |
+| --- | --- |
+| Frontend | React, TypeScript, Vite, Chart.js |
+| Backend | Python, FastAPI, Pydantic, NumPy, httpx |
+| Database | MongoDB Atlas, PyMongo |
+| External data | Open-Meteo Geocoding and Historical Weather APIs, ERA5-Land |
+
+```text
+React frontend -> FastAPI -> MongoDB cache
+                      -> Open-Meteo for missing weather / city search
+```
+
+The frontend receives one analysis response containing the results needed for
+the page. FastAPI fetches only missing weather periods, calculates or reuses the
+baseline, detects events, and returns annual metrics and trends. MongoDB stores
+weather by location/year, baseline thresholds, and versioned analyses. CSV is
+created in the browser from the current successful analysis; it needs no extra
+request. There is no ORM/ODM, Redis, authentication, or background job service.
+
+```text
+backend/
+  app/
+    main.py                 # App lifespan, shared clients, CORS
+    models.py               # Validated requests, responses, stored records
+    api/                    # Routes and admission checks
+    core/                   # Configuration, limits, provider budget
+    services/               # Ingestion, baseline and analysis coordination
+    calculations/           # Percentile, heatwaves, linear regression
+    storage/                # MongoDB caches and maintenance
+  scripts/                  # Mongo check, cache maintenance, live verification
+  tests/                    # Offline tests
+  .env.example
+  requirements.txt
+frontend/
+  src/
+    components/             # Search, summaries, charts, events, methodology
+    services/api.ts         # Requests and error handling
+    utils/                  # CSV and regression presentation
+    types.ts                # API response types
+    index.css               # Responsive styles
+  tests/                    # Regression mapping and description tests
+  .env.example
+  package.json
+```
+
+## Local setup
+
+Prerequisites: **Python 3.13**, **Node.js 22.18+ or a compatible newer LTS version**,
+npm, and a MongoDB Atlas database reachable from your machine. Open-Meteo's free
+non-commercial endpoints do not require API keys; attribution and usage limits
+still apply. See [Open-Meteo usage terms](https://open-meteo.com/en/terms).
+
+### Backend
+
+From the repository root in PowerShell:
 
 ```powershell
 py -3.13 -m venv backend/.venv
@@ -16,43 +89,112 @@ py -3.13 -m venv backend/.venv
 Copy-Item backend/.env.example backend/.env
 ```
 
-Skip the copy if your local `.env` already exists. Edit it locally to supply
-`MONGODB_URI` and `MONGODB_DB_NAME`. Never commit credentials. If a password has
-special characters, percent-encode them in the MongoDB URI. Configure Atlas
-network access for the machine running the API and use a database user with the
-permissions required for reads, writes, indexes, and database statistics.
+Skip the copy if your local file already exists. Configure these values locally;
+never commit credentials or put them in frontend variables:
 
-Other configuration:
-
-| Variable | Default / meaning |
+| Backend variable | Value |
 | --- | --- |
-| `CORS_ORIGINS` | JSON array containing `http://localhost:5173` and `http://127.0.0.1:5173` |
-| `STORAGE_BUDGET_BYTES` | `500000000`; budget for the configured database's logical data plus indexes |
+| `MONGODB_URI` | Atlas connection URI with database credentials |
+| `MONGODB_DB_NAME` | Database name, for example `climate_analyzer` |
+| `CORS_ORIGINS` | JSON array; defaults to `http://localhost:5173` and `http://127.0.0.1:5173` |
+| `STORAGE_BUDGET_BYTES` | Defaults to `500000000` for configured-database logical data plus indexes |
 
-Run the backend from the repository root:
+Percent-encode special characters in the URI password. Configure Atlas network
+access and a database user with permissions for reads, writes, indexes, and
+storage statistics. Backend settings resolve `backend/.env` independently of the
+working directory.
+
+Check connectivity, then start the API:
 
 ```powershell
+.\backend\.venv\Scripts\python.exe backend/scripts/check_mongo.py
 .\backend\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-Use **one worker and one backend instance**: request limits, outgoing budgets,
-and shared-fetch coordination are in process memory. Additional workers or
-replicas would each have independent counters and could race on weather cache
-updates. Restarts reset the in-memory counters. Forwarded client IP headers must
-only be trusted from your hosting platform's actual proxy; arbitrary forwarded
-headers should not determine client identity.
+API documentation: `http://127.0.0.1:8000/docs`. Health: `/api/health`.
+There is no route at `/`.
 
-API documentation is at `http://127.0.0.1:8000/docs`. The root `/` has no route.
+### Frontend
+
+In another terminal at the repository root:
+
+```powershell
+npm --prefix frontend ci
+Copy-Item frontend/.env.example frontend/.env
+npm --prefix frontend run dev -- --port 5173 --strictPort
+```
+
+Skip the copy if the file already exists. Set
+`VITE_API_BASE_URL=http://127.0.0.1:8000` for local development and open
+`http://localhost:5173`. Restart Vite after environment changes. `VITE_` variables
+are public browser configuration and must never contain secrets.
+
+Try **Delhi, India / 2020-2020** for a small analysis, then a range with at least
+ten complete years for regression. A new city needs 30 baseline years and may
+load slowly or hit a timeout/provider limit. Successfully fetched periods stay
+cached, so a later retry can reuse them.
+
+## Heatwave methodology
+
+- **Baseline:** fixed **1991-2020**, independent of the selected years. Calculate
+  the location's 95th percentile of valid daily maximum temperatures with NumPy
+  `method="linear"`. At least 95% of the 10,958 baseline days must be valid.
+- **Event:** at least **three consecutive calendar days strictly above** the
+  threshold. Equal temperatures do not qualify. Missing/invalid readings break
+  sequences. Nonfinite/non-numeric readings and values outside -100 to 70 C are
+  treated as gaps rather than removed dates.
+- **Year boundaries:** detect continuously across December 31. Count an event in
+  its starting year; allocate heatwave days to the year in which each day occurs.
+- **Selected range:** summary duration and peak use only selected dates. Event
+  details distinguish observed, selected, and full durations. The table can show
+  overlapping events that started before the selection, so it can contain more
+  events than the start-count card.
+- **Boundary context:** read two neighboring days, extending connected hot runs
+  in 30-day chunks up to 366 extra days per side. Dataset edges, missing values,
+  and caps can leave boundaries unresolved; full duration is then unknown.
+- **Completeness:** unknown counts/durations are `null`, never invented zeroes.
+  Complete metrics require valid selected readings and known relevant boundary
+  classifications. Peaks on incomplete results are observed values, not guaranteed
+  whole-period maxima. Years are assessed independently.
+- **Rolling averages:** trailing five complete consecutive selected years. The
+  first four years are unavailable. Duration averages use annual longest portions,
+  not all event durations. Peak temperature has no rolling-average line.
+- **Insights:** compare the first and last five selected years when there are at
+  least ten years and both comparison periods are complete. Earlier zero means
+  percentage change is unavailable. No causal or significance claims are made.
+
+### Historical linear regression
+
+Ordinary least squares fits **annual heatwave start counts against actual calendar
+years**. Only complete years with known valid counts are included, with at least
+**ten usable years** required. Gaps retain actual year distances; constant counts
+produce a valid flat line. The ten-year rule is a project choice, not proof of
+statistical significance.
+
+The dashed line describes the historical direction and rate. For example,
+`change_per_decade = 2` means the fitted annual count rises by two events over a
+ten-year interval. This is **not a forecast, causal conclusion, or significance
+test**. Fitted values can be fractional or negative because OLS is unconstrained;
+they are not observed counts. Plot values remain unrounded; text is rounded.
+
+### Data source and assumptions
+
+Weather comes from [Open-Meteo Historical Weather](https://open-meteo.com/en/docs/historical-weather-api),
+using **ERA5-Land** daily `temperature_2m_max`; city lookup uses
+[Open-Meteo Geocoding](https://open-meteo.com/en/docs/geocoding-api).
+ERA5-Land combines observations and models (reanalysis). A city represents one
+weather grid point, not a city-wide average or local station measurement. Grid
+coordinates may differ from the selected coordinates; consistency with the
+baseline is checked. An annual threshold mixes seasons and has limitations
+compared with a seasonal/day-of-year definition.
 
 ## API
 
-| Endpoint | Behavior |
+| Endpoint | Purpose |
 | --- | --- |
-| `GET /api/health` | Returns `{"status":"ok"}`; a liveness check, not a per-request database readiness check |
-| `GET /api/locations?query=Delhi` | Returns a JSON array of location matches; choose by country/region as well as name |
-| `POST /api/analysis` | Returns baseline, summary, annual metrics, rolling averages, events, insights, and method settings |
-
-Example analysis request:
+| `GET /api/health` | Liveness: `{"status":"ok"}`; not a database readiness probe |
+| `GET /api/locations?query=Delhi` | JSON array of matching cities |
+| `POST /api/analysis` | Baseline, summary, annual metrics, rolling averages, regression, events, insights, and method settings |
 
 ```json
 {
@@ -67,207 +209,156 @@ Example analysis request:
 }
 ```
 
-Use only the location fields above. The geocoding response's `id`, `country`, and
-`admin1` are useful for the selection UI but are not fields of `AnalysisRequest.location`.
+Send only these location fields; geocoding `id`, `country`, and `admin1` are display
+context, not analysis request fields. Exact schemas are available in `/docs` and
+`backend/app/models.py`.
 
-Responses use 422 for invalid input, 429 for incoming rate limits, 503 for
-capacity/budget/storage/provider rate-limit failures, 504 for timeouts, and 502
-for other provider failures or incompatible/invalid stored or fetched data.
-Capacity and budget responses include `Retry-After`. Never infer zero activity
-from a null metric. An observed peak on an incomplete result is the peak among
-detected events, not a guaranteed maximum for the whole period.
+Responses include `analysis_version: "analysis-v2"` and `regression` containing
+`status`, `reason`, `metric`, `minimum_complete_years`, `years_used`,
+`slope_events_per_year`, `change_per_decade`, and `fitted_values`. Each fitted point
+has `year`, `observed_event_starts`, and `fitted_event_starts`. Unavailable results
+use `reason: "insufficient_complete_years"`, null slope/change, and empty fitted
+values. The frontend explains the minimum rather than drawing a line.
 
-## Calculation and interpretation
+Errors: **422** validation, **429** incoming rate limits, **503** capacity,
+provider limits, storage or budget failures, **504** timeouts, and **502** other
+provider/data failures. Relevant capacity/budget responses carry `Retry-After`,
+which the backend CORS configuration exposes to browser code.
 
-- The baseline is always **1991–2020**, independent of the selected years. One
-  location-specific threshold is NumPy's 95th percentile with `method="linear"`
-  across valid baseline daily maximum temperatures. At least 95% of the 10,958
-  baseline days must be valid. The percentile is a rank in the temperature
-  distribution, not multiplication of a temperature by 95%.
-- A heatwave is at least **three consecutive calendar days strictly above** the
-  threshold. Equality is not hot. Missing and invalid readings break runs.
-  Nonfinite values, strings, and temperatures outside -100 to 70 C are invalid;
-  they become recorded gaps, not silently removed dates.
-- Events continue across December 31. Frequency counts events in their starting
-  year, while heatwave days belong to the years in which those days occur.
-  The overlapping-event table can therefore contain more events than the
-  selection's event-start count.
-- Selection summaries clip event dates and peaks to the selected period. A
-  four-day event crossing January 1 can contribute only two selected days;
-  those two still belong to a qualifying event. Full duration is null unless
-  both boundaries are resolved.
-- The backend initially reads two neighboring days and extends connected hot
-  runs in 30-day chunks, capped at 366 extra days per side. It does not fetch
-  before 1950 or beyond the conservative five-day ERA5-Land availability lag.
-  Missing neighbors, dataset edges, and lookup caps can leave boundaries
-  unresolved. A short run beside unknown data is not reported as a confirmed
-  non-event.
-- Every selected date must have a valid reading and relevant boundary
-  classification must be known for complete summary counts. Otherwise counts
-  and duration metrics are null and `metrics_complete` is false. A year can be
-  complete even when another selected year is incomplete.
-- Trailing five-year averages require five complete consecutive selected years.
-  The first four selected years have null averages. Duration averages refer to
-  the mean of each year's longest event portion, not average full event length.
-- Insights compare the first five and last five selected years only when there
-  are at least ten selected years and both comparison periods are complete.
-  Middle years are not part of that comparison. An earlier zero average makes
-  percentage change unavailable. These comparisons do not establish causality
-  or statistical significance.
+## Caching and operational limits
 
-Data comes from [Open-Meteo historical weather](https://open-meteo.com/en/docs/historical-weather-api)
-using ERA5-Land daily `temperature_2m_max`; location search uses
-[Open-Meteo geocoding](https://open-meteo.com/en/docs/geocoding-api).
-ERA5-Land is reanalysis, combining observations and models. A selected city is
-represented by one weather grid point, not an average over its city area or a
-local station measurement. Grid coordinates can differ from the selected
-coordinates; the backend checks consistency against the baseline. One annual
-threshold mixes seasons and can miss changes relative to seasonal expectations.
+MongoDB collections have unique indexes and validated records:
 
-## Architecture, limits, and caching
+- `weather_years`: location, timezone, year, source/dataset/unit, daily values,
+  gaps, and fetched-date coverage. Fetch only missing periods, including when
+  baseline and selected years overlap.
+- `baseline_thresholds`: location and baseline/method settings.
+- `analyses`: selected years plus baseline/detection/context/version settings.
+  Persist settled analyses with complete metrics and resolved boundaries;
+  uncertain results are returned without permanently caching them as settled.
 
-The backend is a Python package with one canonical import path, such as
-`from app.models import AnalysisRequest`:
+Older `analysis-v1` results are skipped and rebuilt as v2 from reusable weather
+and baseline caches, not automatically deleted. Changing regression rules requires
+another analysis-version change. Historical records have no automatic expiry.
 
-```text
-backend/
-  app/
-    main.py                 # App creation, shared clients, lifespan, CORS
-    models.py               # Validated requests, responses, stored records
-    api/                    # HTTP routes and admission dependencies
-    core/                   # Settings, incoming limits, outgoing budget
-    services/               # Weather/geocoding requests and analysis coordination
-    calculations/           # Baseline percentile and heatwave detection
-    storage/                # MongoDB access, caches, maintenance, tracked I/O
-  scripts/                  # Operator commands and live verification
-  tests/                    # Offline regression tests
-  .env                      # Local secrets, ignored by Git
-  .env.example
-  requirements.txt
-```
+Use **one backend worker and one instance**. Incoming counters, outgoing budgets,
+and shared-fetch coordination are in memory; restarts reset counters. Multiple
+workers/replicas would need shared coordination. Trust forwarded client IP headers
+only from the hosting platform's actual proxy.
 
-Package folders contain `__init__.py`. `app/main.py` registers the router from
-`app/api/routes.py`; request admission checks live in `app/api/dependencies.py`.
-Settings always resolve `.env` at the backend root, independent of the working
-directory. `app/services/weather.py` validates windows and implements weather
-retries; `weather_service.py` fills only unfetched dates and shares in-flight
-work per location/year. `baseline_service.py` builds/reuses the threshold.
-`analysis_service.py` calculates results and checks the analysis cache first.
+Incoming limits are six analyses/minute and 30 city searches/minute per client
+IP, with at most two active analyses. People on one public IP share limits.
+Provider concurrency is two weather calls and two geocoding calls. Backend
+deadlines are 180 seconds for analysis and 15 seconds for city search; the frontend
+allows 200 and 20 seconds respectively. Provider retries are bounded to three
+attempts and respect supported `Retry-After` handling.
 
-Collections have unique indexes:
+The local outgoing budget charges every HTTP attempt, including failed attempts:
+one unit per city lookup and `ceil(requested_days / 14)` per weather fetch, capped
+at 540/minute, 4,500/hour, and 9,000/day. This is a protective estimate, not a
+provider-wide ledger. Monitor monthly usage and other apps sharing the IP. See
+[Open-Meteo pricing](https://open-meteo.com/en/pricing).
 
-- `weather_years`: coordinates, timezone, year, source, dataset, and unit. Each
-  document contains the year's full calendar with gaps. `fetched_dates=None`
-  means the whole year was fetched; an explicit date list tracks a partial
-  year. A fetched missing reading is not repeatedly requested.
-- `baseline_thresholds`: location, source/dataset/unit, baseline period,
-  percentile, percentile method, and baseline version.
-- `analyses`: location, selected years, and baseline/detection/context method
-  settings. Display names are excluded from keys. Complete analyses with fully
-  resolved event boundaries are persisted; uncertain results are returned but
-  not permanently saved as settled analyses.
+### Storage maintenance
 
-Stored JSON documents are validated on write and read. Historical records have
-no automatic expiry. When calculation settings change, update the corresponding
-model version/settings and matching service constants; reusable weather remains
-available. Use explicit invalidation when source weather or a stored baseline
-must be refreshed.
-
-Incoming allowances are 6 analyses/minute and 30 location searches/minute per
-client IP, with at most two active analyses. People sharing a public IP share
-its allowance. Provider concurrency is two weather calls and two geocoding
-calls. Analysis has a 180-second deadline; location search has a 15-second
-deadline. Both providers use at most three attempts for retryable failures.
-Geocoding never retries sooner than `Retry-After`; delays above two seconds are
-returned to the caller rather than retried. Weather's corresponding retry-delay
-cap is ten seconds.
-
-The outgoing budget conservatively charges each HTTP attempt, including failed
-attempts: geocoding costs one unit, weather costs `ceil(requested_days / 14)`.
-Its limits are 540/minute, 4,500/hour, and 9,000/day. These are local protective
-limits, not a complete provider-account quota ledger; monthly usage and other
-applications on the same IP must also be monitored. See
-[Open-Meteo pricing and usage terms](https://open-meteo.com/en/pricing).
-A first location request can need 30 baseline years and hit the deadline or
-budget. Retry later: successfully fetched periods remain cached.
-
-Cancelling one caller does not cancel a shared weather fetch. On shutdown,
-fetches get ten seconds to finish; remaining HTTP work is cancelled. Running
-synchronous MongoDB operations are tracked and drained before the clients close.
-MongoDB calls have connection, selection, and socket timeouts.
-
-## Storage and maintenance
-
-The API samples database storage every five minutes and logs a warning at 80%
-of the configured budget. Read a report manually:
+Storage is sampled every five minutes with a warning at 80% of the configured
+budget. The report covers logical data plus indexes in the configured database,
+not all databases or compressed disk usage. Also monitor Atlas cluster metrics.
 
 ```powershell
 .\backend\.venv\Scripts\python.exe backend/scripts/manage_cache.py storage
 ```
 
-The report sums logical document bytes and index bytes for the **configured
-database only**, not compressed disk size or the entire cluster. Other databases
-also use quota. Check the Atlas **Logical Size** metric and configure alerts;
-[Atlas Free limits](https://www.mongodb.com/docs/atlas/reference/free-shared-limitations/)
-describe the cluster-wide quota and lack of automatic storage expansion.
-If growth approaches capacity, inspect obsolete analysis versions and unused
-locations, invalidate selected caches, or upgrade storage. There is no automatic
-eviction or deletion of valuable historical weather.
-
-Preview invalidation without changing data:
-
-```powershell
-.\backend\.venv\Scripts\python.exe backend/scripts/manage_cache.py invalidate --kind weather --year 2020 --latitude 28.65195 --longitude 77.23149 --timezone Asia/Kolkata
-```
-
-**Stop the API first** if applying maintenance, then run the same command with
-`--apply` to delete the displayed scope. This avoids races with ongoing fetches.
-No public invalidation endpoint exists. Weather invalidation removes all analyses
-at that location, and also its thresholds if the year is in 1991–2020. Baseline
-invalidation removes its analyses and thresholds; `--kind analyses` preserves
-the inputs. Invalidation covers all method versions at the supplied coordinates
-and timezone. Deletion is not an atomic multi-collection transaction; rerun a
-failed maintenance operation while the API remains stopped.
+Invalidation previews by default. **Stop the API before using `--apply`.** Weather
+invalidation also removes dependent analyses and, for baseline years, thresholds.
+Baseline invalidation removes its analyses; analyses-only invalidation keeps
+inputs. No automatic eviction or public invalidation endpoint exists. See
+`backend/scripts/manage_cache.py --help` for scoped options.
 
 ## Verification
 
-Offline regression suite (no provider calls or database writes):
+Run from the repository root:
 
 ```powershell
 .\backend\.venv\Scripts\python.exe -m unittest discover -s backend/tests -v
+npm --prefix frontend run lint
+npm --prefix frontend run build
+node --experimental-strip-types --test frontend/tests/regression.test.mjs
 ```
 
-Tests cover cold and concurrent analysis flows using an in-memory database and
-mock HTTP provider, warm-cache reuse, baseline coverage, strict thresholds,
-cross-year allocation, incomplete years, rolling averages, insights, CORS,
-incoming limits, failure responses, provider retries/concurrency, cancellation,
-safe shutdown, and maintenance previews.
+Recorded results from development (not a claim that each command was rerun during
+this documentation update):
 
-Optional real-cache/server verification:
+- **35 backend offline tests passed:** climate edge cases, completeness, actual
+  year regression distances, cache migration/reuse, validation, limits, retries,
+  cancellation, shutdown, and maintenance. Dependency checks passed.
+- **Frontend lint/build and six regression tests passed:** year mapping, excluded
+  years, precision, increasing/decreasing/constant/near-zero descriptions, and
+  unavailable fits.
+- **Real localhost integration:** Delhi 2020 produced one event start, six
+  heatwave days, a six-day longest selected portion, 43.9 C peak, and 41.1 C baseline.
+- **User browser checks:** available regression overlay/tooltip, decreasing
+  wording, single-year unavailable state, and an actual CSV download. Direct CSV
+  zero/null/escaping checks also passed.
+- **Core browser checks:** loading, duplicate-submit protection, simulated HTTP,
+  connection/timeout, malformed-response, empty/incomplete, and boundary states.
+  Real populated layouts were checked at 320, 375, 768, and 1440 px.
+
+Simulated responses do not verify actual provider failures. Physical mobile,
+Safari, production end-to-end behavior, and production cross-origin `Retry-After`
+access remain unverified.
+
+An optional live verification script starts a temporary localhost server, uses
+existing Delhi weather/baseline cache, creates a missing analysis, checks repeat
+cache reuse, calls real geocoding, and shuts down:
 
 ```powershell
 .\backend\.venv\Scripts\python.exe backend/scripts/verify_live.py
 ```
 
-This requires the previously populated Delhi baseline/weather cache. It starts a
-temporary server on a free localhost port, creates one missing analysis from
-real cached weather, verifies a repeat cache hit and the 2020 result, calls live
-geocoding, then shuts down. It writes one analysis document and deletes nothing.
-The 2020 regression expectation is six heatwave days with a 43.9 C peak and a
-41.1 C baseline. The script fails if it needs external weather or no uncached
-analysis year remains in its test range. Normal regression tests need no such
-fixtures. Windows asyncio requires local socket access even for offline tests.
-Scripts can also run as modules from the `backend` directory, for example
-`.\.venv\Scripts\python.exe -m scripts.manage_cache storage`. Tests additionally
-verify the package's model identity, backend-root `.env` path, API schema, and
-persisted cache field compatibility.
+It **writes an analysis document**, deletes nothing, and requires populated cache
+fixtures and an uncached test year; it is not an offline test. All normal backend
+tests use mock providers/database data and do not write real cache records.
 
-## Next phase and deployment
+## Deployment plan
 
-Connect React to the API using a configurable backend URL; display summary,
-annual charts, events, coverage, methodology, insights, loading states, and null
-metrics honestly. Set Railway's database environment variables and the actual
-Vercel origin in `CORS_ORIGINS`; run the backend with one worker/instance.
-Deployment, frontend integration, and browser end-to-end testing remain pending.
+Deployment has not yet been verified. Intended settings:
 
-Codex assisted with implementation, debugging, regression tests, and documentation.
+| Service | Configuration |
+| --- | --- |
+| Vercel | Root `frontend`; build `npm run build`; output `dist` |
+| Vercel environment | `VITE_API_BASE_URL` = public Railway backend origin, set before building |
+| Railway | Python 3.13; install `backend/requirements.txt`; repository-root start command below |
+| Railway environment | `MONGODB_URI`, `MONGODB_DB_NAME`, JSON-array `CORS_ORIGINS` containing the actual allowed frontend origins |
+| Atlas | Database user and network access for the running backend |
+
+```sh
+uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port "$PORT" --workers 1
+```
+
+Use one Railway instance and `/api/health` for its health check. The frontend calls
+the backend directly. Configure trusted proxy handling for the actual platform.
+Before submitting, verify production city search, analysis, cache reuse, CSV,
+available/unavailable regression, responsive layout, and CORS through the public
+frontend. Keep database credentials server-side.
+
+## Limitations and improvements
+
+- Heatwaves only, with city/point selection. Area aggregation, map selection,
+  additional hazards, PDF export, and Mann-Kendall testing are not implemented.
+- Improve seasonal thresholds after domain review; quantify trend uncertainty
+  rather than interpreting descriptive OLS as significance or prediction.
+- Background jobs with progress could improve slow first searches.
+- Shared limits/coordination are needed for multiple backend instances.
+- Monitor Atlas storage and deliberately refresh revised source data; there is
+  no automatic historical-cache refresh or eviction.
+- Add cross-browser/physical-device checks and deployment monitoring.
+
+## AI tools used
+
+**OpenAI Codex** assisted with planning and mentoring, architecture/methodology
+explanations, code generation and review, debugging, tests, browser verification
+assistance, refactoring, and documentation. Work combined user-written changes
+with explicitly authorized direct implementation. The user ran setup and browser
+checks and reviewed behavior during development. AI assistance does not constitute
+independent scientific validation of the heatwave definition.
